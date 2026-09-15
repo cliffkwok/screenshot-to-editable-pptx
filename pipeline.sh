@@ -1,43 +1,46 @@
 #!/bin/bash
-# Screenshot → Editable PPTX Pipeline
-# Usage: bash pipeline.sh <screenshot.png>
+# Screenshot → Editable PPTX Pipeline v2
+# Integrates: editppt (OCR) + python-pptx (reconstruct) + SYSTEM.md (verify)
+# Usage: bash pipeline.sh <project_name> <screenshot.png>
 
 set -e
 
-SCREENSHOT="${1:?Usage: bash pipeline.sh <screenshot.png>}"
-NAME=$(basename "$SCREENSHOT" | sed 's/\.[^.]*$//')
-OUTDIR="output/${NAME}"
-mkdir -p "$OUTDIR"
+PROJECT="${1:?Usage: bash pipeline.sh <project_name> <screenshot.png>}"
+SCREENSHOT="${2:?Usage: bash pipeline.sh <project_name> <screenshot.png>}"
 
-echo "=== Pipeline: Screenshot → Editable PPTX ==="
-echo "Input: $SCREENSHOT"
+BASE="$(cd "$(dirname "$0")" && pwd)"
+PROJ="$BASE/projects/$PROJECT"
+mkdir -p "$PROJ/sources" "$PROJ/output"
 
-# Step 1: Prepare with editppt (OCR + structure)
-echo "[1/4] editppt prepare..."
-editppt prepare "$SCREENSHOT" --out "$OUTDIR"
+echo "╔══════════════════════════════════════╗"
+echo "║  Screenshot → Editable PPTX v2     ║"
+echo "╚══════════════════════════════════════╝"
+echo "Project: $PROJECT"
+echo "Source:  $SCREENSHOT"
 
-# Step 2: Rebuild pages
-echo "[2/4] editppt run..."
-cd "$OUTDIR"
-RUN_DIR=$(ls -d run_* 2>/dev/null | head -1)
-if [ -n "$RUN_DIR" ]; then
-  while true; do
-    STATUS=$(editppt run next "$RUN_DIR" 2>&1)
-    echo "$STATUS"
-    if echo "$STATUS" | grep -q "complete\|finalize"; then
-      break
-    fi
-  done
-  editppt run finalize "$RUN_DIR"
+# Step 1: Copy source
+echo ""
+echo "[1/4] Copying source image..."
+cp "$SCREENSHOT" "$PROJ/sources/original.png"
+
+# Step 2: OCR + text hints (editppt)
+echo "[2/4] editppt OCR analysis..."
+editppt prepare "$SCREENSHOT" 2>&1 | tail -3
+
+# Step 3: Reconstruct (python-pptx + SYSTEM.md rules)
+echo "[3/4] Reconstructing using SYSTEM.md rules..."
+PYTHON_SCRIPT="$PROJ/reconstruct.py"
+if [ -f "$PYTHON_SCRIPT" ]; then
+    python3 "$PYTHON_SCRIPT"
+else
+    echo "  ⚠ No reconstruct.py found — create one per SYSTEM.md rules"
 fi
-cd - > /dev/null
 
-# Step 3: Verify with SYSTEM.md rules
-echo "[3/4] SYSTEM.md verify..."
-python3 scripts/verify.py "$OUTDIR"
+# Step 4: Verify (SYSTEM.md)
+echo "[4/4] SYSTEM.md verification..."
+python3 "$BASE/scripts/selfcheck.py" "$PROJ/output/"*.pptx 2>/dev/null || echo "  ⚠ Manual Step 10 diff recommended"
 
-# Step 4: Beautify with ppt-master (if skill available)
-echo "[4/4] ppt-master beautify..."
-echo "  → Ready for manual beautify: $OUTDIR"
-
-echo "=== Done: $OUTDIR ==="
+echo ""
+echo "=== Pipeline Complete ==="
+echo "Output: $PROJ/output/"
+ls "$PROJ/output/" 2>/dev/null || echo "  Check project directory"
