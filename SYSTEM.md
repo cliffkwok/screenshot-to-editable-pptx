@@ -188,3 +188,11 @@ Vision 結構化數據中的 shape_type 必須嚴格匹配：
 
 小方框内文字用 auto_size = SHAPE_TO_FIT_TEXT 自动居中。
 比手动 MSO_ANCHOR 更可靠。
+
+## 规则 AF: Vision 百分比定位验证
+
+交付前用 vision 提取原图的像素位置 → 转百分比 → 与 P() 参数比对：
+1. 偏差 > 3% → 修正
+2. 卡片框架位置应优先验证（最容易量测）
+3. 内部元素（圆、pill）用 close-up 分析确认半径和间距
+

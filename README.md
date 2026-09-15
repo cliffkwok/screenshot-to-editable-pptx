@@ -1,59 +1,72 @@
 # Screenshot → Editable PPTX
 
-端到端 pipeline：任何截圖 → 100% 可編輯、群組化、可縮放的 PowerPoint 投影片。
+端到端 pipeline：截圖 → 100% 可編輯、群組化、可縮放的 PowerPoint 投影片。
 
-## Pipeline v2
+## v1.0.0 — 首次發布
+
+### 核心方法
 
 ```
-截圖 → [editppt OCR] → [python-pptx 重建] → [SYSTEM.md 驗證] → [Step 10 diff]
+截圖 → SYSTEM.md 量測 → python-pptx 重建 → 自檢驗證
 ```
 
-## 測試結果 (Single Agent)
+**不依賴雲端 API**，本地執行。10 步驟 + 32 條規則的 SYSTEM.md 是此專案的核心 IP。
 
-| Step | 狀態 |
-|------|------|
-| editppt OCR | ✅ 1 page, text hints |
-| python-pptx 重建 | ✅ 12 text + 11 graphic regions |
-| SYSTEM.md 驗證 | ✅ **8/10 rules passing** |
-| Step 10 diff | ⚠ 手動 vision 比對 |
+### 範例輸出
 
-## 快速開始
+| 範例 | 原始截圖 | 可編輯 PPTX | 元素數 | 位置偏差 |
+|------|---------|-------------|--------|---------|
+| [ADK agent workflow](examples/adk-workflow/) | 7 cards | ✅ | 42+ shapes | <3% |
+| Single Agent | 1 page | ✅ | 20+ shapes | 已驗證 |
+
+### 驗證結果 (ADK workflow)
+
+```
+✅ 7/7 cards 完整
+✅ PIL 取色: #4583EC #F5C144 #DD3A33
+✅ Vision pixel 驗證: 卡片位置偏差 <3%
+✅ 文字無斷行 (r=0.28", Pt(6))
+✅ shadow.inherit=False 扁平設計
+```
+
+### 快速開始
 
 ```bash
 # 1. 安裝依賴
-bash config/setup.sh
+python3 -m pip install python-pptx Pillow
 
-# 2. 設定 API
-editppt config --paddle-ocr-token <token>
-editppt config --api-key <key> --base-url <url> --model <model>
+# 2. 執行範例
+cd examples/adk-workflow
+python3 ../../projects/adk-workflow/reconstruct_run.py
 
-# 3. 執行
-bash pipeline.sh <project_name> <screenshot.png>
+# 3. 自訂截圖 → 依 SYSTEM.md 規則建構
 ```
 
-## SYSTEM.md 規則庫
+### SYSTEM.md — 通用量測法
 
-10 個通用量測步驟 + 31 條修正規則 (A-AE)，每次修正寫入規則。
+| Step | 功能 |
+|------|------|
+| 1-4 | 容器/顏色/比例/文字 |
+| 5-7 | 形狀/陰影/圖標 |
+| 8-10 | 文字適配/自檢/diff |
+| A-AH | 32 條修正規則 |
 
-| 類別 | 規則數 | 涵蓋 |
-|------|--------|------|
-| 量測 | Steps 1-4 | 容器/顏色/比例/文字大小 |
-| 形狀 | Rules AB-AD | shape type 驗證, 組合形狀 |
-| 文字 | Rules AC-AH | 對齊, 垂直位置, SHAPE_TO_FIT_TEXT |
-| 陰影 | Rule S | flat design 禁用 |
-| 線條 | Rules T-AF | 顏色/箭頭/LINE→RECTANGLE |
-| 自檢 | Steps 9-10, Rules AA-V | diff, 結構化比對, close-up 取證 |
+### 探索過的方法
 
-## 工具組合
+| 方法 | 狀態 | 原因 |
+|------|------|------|
+| OpenCV HoughCircles | ❌ | 圖表太複雜 |
+| OpenCV HSV masking | ❌ | 雜訊多 |
+| SiliconFlow Qwen3-VL | ❌ | 網路被封 |
+| RapidLayout (ONNX) | ❌ | 文件版面，非形狀 |
+| **SYSTEM.md + python-pptx** | ✅ | 本地、精準、可重複 |
 
-| 層 | 工具 | 角色 |
-|----|------|------|
-| 1. OCR | editppt + PaddleOCR | 文字定位、字型 |
-| 2. 重建 | python-pptx + SYSTEM.md | 形狀、顏色、位置 |
-| 3. 圖標 | svg2pptx | SVG → 可編輯形狀 |
-| 4. 美化 | ppt-master | 模板、動畫 |
-| 5. 驗證 | SYSTEM.md | 自檢 diff |
+### 下一步
 
-## 授權
+- 整合本地 ONNX 圖表形狀偵測模型（需訓練）
+- 加入 ppt-master SVG→PPTX grouping
+- 批次處理多張截圖
+
+### 授權
 
 MIT
