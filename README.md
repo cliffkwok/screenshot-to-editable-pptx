@@ -1,20 +1,21 @@
 # Screenshot → Editable PPTX
 
-端到端 pipeline：任何截圖 → 100% 可編輯、群組化、可縮放、文字自適應的 PowerPoint 投影片。
+端到端 pipeline：任何截圖 → 100% 可編輯、群組化、可縮放的 PowerPoint 投影片。
 
-## Pipeline
+## Pipeline v2
 
 ```
-截圖 → [editppt 重建] → [svg2pptx 圖標] → [ppt-master 美化] → [SYSTEM.md 驗證]
+截圖 → [editppt OCR] → [python-pptx 重建] → [SYSTEM.md 驗證] → [Step 10 diff]
 ```
 
-| 層 | 工具 | 角色 |
-|----|------|------|
-| 1. OCR + 量測 | editppt + PaddleOCR | 文字定位、字型、顏色 |
-| 2. 結構重建 | editppt prepare/run | 形狀重建、分層 |
-| 3. 圖標複製 | svg2pptx | SVG → PPT 可編輯形狀 |
-| 4. 美化 | ppt-master (Beautify) | 品牌模板、動畫 |
-| 5. 驗證 | SYSTEM.md | 自檢 diff、比例驗證 |
+## 測試結果 (Single Agent)
+
+| Step | 狀態 |
+|------|------|
+| editppt OCR | ✅ 1 page, text hints |
+| python-pptx 重建 | ✅ 12 text + 11 graphic regions |
+| SYSTEM.md 驗證 | ✅ **8/10 rules passing** |
+| Step 10 diff | ⚠ 手動 vision 比對 |
 
 ## 快速開始
 
@@ -27,21 +28,31 @@ editppt config --paddle-ocr-token <token>
 editppt config --api-key <key> --base-url <url> --model <model>
 
 # 3. 執行
-bash pipeline.sh <screenshot.png>
+bash pipeline.sh <project_name> <screenshot.png>
 ```
 
-## 為什麼這些工具一起用
+## SYSTEM.md 規則庫
 
-| 工具 | 強項 | 互補 |
-|------|------|------|
-| **editppt** | 截圖→結構化重建（最精準） | ppt-master 補美化 |
-| **ppt-master** | 模板/美化/動畫 | editppt 補重建 |
-| **svg2pptx** | SVG → 可編輯形狀 | 兩者都可用 |
-| **SYSTEM.md** | 通用量測法 10 steps + 31 rules | 品質保證 |
+10 個通用量測步驟 + 31 條修正規則 (A-AE)，每次修正寫入規則。
 
-## 規則庫
+| 類別 | 規則數 | 涵蓋 |
+|------|--------|------|
+| 量測 | Steps 1-4 | 容器/顏色/比例/文字大小 |
+| 形狀 | Rules AB-AD | shape type 驗證, 組合形狀 |
+| 文字 | Rules AC-AH | 對齊, 垂直位置, SHAPE_TO_FIT_TEXT |
+| 陰影 | Rule S | flat design 禁用 |
+| 線條 | Rules T-AF | 顏色/箭頭/LINE→RECTANGLE |
+| 自檢 | Steps 9-10, Rules AA-V | diff, 結構化比對, close-up 取證 |
 
-所有量測、複製、驗證規則集中在 [SYSTEM.md](SYSTEM.md)。每次修正都寫入規則，確保下次不重複犯錯。
+## 工具組合
+
+| 層 | 工具 | 角色 |
+|----|------|------|
+| 1. OCR | editppt + PaddleOCR | 文字定位、字型 |
+| 2. 重建 | python-pptx + SYSTEM.md | 形狀、顏色、位置 |
+| 3. 圖標 | svg2pptx | SVG → 可編輯形狀 |
+| 4. 美化 | ppt-master | 模板、動畫 |
+| 5. 驗證 | SYSTEM.md | 自檢 diff |
 
 ## 授權
 
