@@ -15,28 +15,46 @@ Verbatim delivery contract:
 
 ## Hard rule — do not send on fail
 
-Do **not** give the user a `.pptx` path, open the file, or say the work is done until **all three**:
+Do **not** give the user a `.pptx` path, open the file, or say the work is done until:
 
+0. **[Pre-delivery checklist](references/pre-delivery-checklist.md)** — every **category** ticked (`measure` / `color` / `shape` / `text` / `lines` / `delivery`)
 1. `source_audit.py` exits 0 — spec text boxes contain ink on the **original screenshot**, glyph height matches declared pt, boxes overlap measured lines
 2. `verify_pptx.py` exits 0 with `gates.shape`, `gates.font`, `gates.color` all true
 3. `compare_render.py` exits 0 — a **real PowerPoint slideshow raster** vs the original screenshot (card IoU, no origin-stacked groups, highlight not covering extra glyphs)
 
-## Universal measure rule (every screenshot, every slide)
+**Order:** finish the rebuild → run checklist A → run gates B → only then deliver (statement C). Skipping the checklist is a fail even if gates pass.
 
-**Read and follow** [references/universal-measure-rule.md](references/universal-measure-rule.md) on **every** rebuild — including the next different screenshot. Do not wait for the user to re-teach it.
+## Rule categories (learn once → apply forever)
+
+Corrections are filed by category so you only re-teach one slice:
+
+| Tag | File |
+|-----|------|
+| index | [references/rules/README.md](references/rules/README.md) |
+| `measure` | [references/rules/01-measure.md](references/rules/01-measure.md) |
+| `color` | [references/rules/02-color.md](references/rules/02-color.md) |
+| `shape` | [references/rules/03-shape.md](references/rules/03-shape.md) |
+| `text` | [references/rules/04-text.md](references/rules/04-text.md) |
+| `lines` | [references/rules/05-lines-icons.md](references/rules/05-lines-icons.md) |
+| `delivery` | [references/rules/06-delivery.md](references/rules/06-delivery.md) |
+| log | [references/rules/LEARNINGS.md](references/rules/LEARNINGS.md) |
+
+**When you correct something:** agent appends `LEARNINGS.md` with the category tag, promotes the reusable line into that category file, and re-runs the checklist. You should not need to repeat it on the next screenshot.
+
+Pointer index (same law): [references/universal-measure-rule.md](references/universal-measure-rule.md).
 
 One-line law: **measure every element against its neighbors (up/down/left/right); never place by leftover space.**
 
-Must-do when creating the slide:
+Must-do when creating the slide (by category):
 
-1. **Text inside a shape** → measure ink ↔ shape edge (`pad_frac`); shape-native Edit Text.
-2. **Text near a shape** → correct host + measured gap; **wrap only if the photo wraps** (single-line labels stay `wrap=False` with width ≥ ink).
-3. **Text placeholders** → pad to shape above/below; wrap from the photo.
-4. **Flow groups** → group bbox vs surrounding card: `pad_L/R`, `pad_from_rule` (often > 0), `pad_B`. Never erase top body whitespace by gluing a fan to the divider. Never center leftover space.
-5. **Dividers** that touch the card L/R → full card width.
-6. **Arrow tips** that touch a shape → end on that edge.
+1. **Text** → ink↔shape pads; wrap from photo; mid-word wraps = defects (widen).
+2. **Measure** → flow-group pads incl. `pad_from_rule`; captions via `caption_band_box`.
+3. **Shape** → correct primitive (ellipse→oval); 3D = back+front.
+4. **Color** → PIL sample + `color_probes`.
+5. **Lines** → stroke per role; Line arrows; top-level icon groups.
+6. **Delivery** → checklist + three gates before any path to you.
 
-When the user corrects one instance, **propagate to every similar element** and keep `references/universal-measure-rule.md` updated.
+When the user corrects one instance, **propagate to every similar element** and update the matching category file + `LEARNINGS.md`.
 
 ```bash
 python3 scripts/text_hints.py \

@@ -143,23 +143,132 @@ def is_header_red(rgb):
     return r > 160 and r > g + 40 and r > b + 40 and g < 140
 
 
+def header_bands(im: Image.Image, pred, min_w_frac=0.12, max_w_frac=0.55,
+                 min_h_frac=0.03, max_h_frac=0.18):
+    """Detect wide horizontal header bars by row density (not flood-fill).
+
+    Flood-fill merges header + same-hue diagram borders into one tall blob.
+    Row bands stay header-height even when the frame shares the header color.
+    """
+    w, h = im.size
+    px = im.load()
+    # Per-row: longest run of pred pixels + start x
+    row_runs = []
+    for y in range(h):
+        best = (0, 0)  # length, start
+        run = 0
+        start = 0
+        for x in range(w):
+            if pred(px[x, y][:3]):
+                if run == 0:
+                    start = x
+                run += 1
+                if run > best[0]:
+                    best = (run, start)
+            else:
+                run = 0
+        row_runs.append(best)
+
+    min_w = int(w * min_w_frac)
+    bands = []
+    y = 0
+    while y < h:
+        length, start = row_runs[y]
+        if length < min_w:
+            y += 1
+            continue
+        y0 = y
+        x0, x1 = start, start + length
+        while y < h and row_runs[y][0] >= min_w:
+            length, start = row_runs[y]
+            x0 = min(x0, start)
+            x1 = max(x1, start + length)
+            y += 1
+        y1 = y
+        bw, bh = x1 - x0, y1 - y0
+        if (min_w_frac * w <= bw <= max_w_frac * w
+                and min_h_frac * h <= bh <= max_h_frac * h
+                and bw > bh * 1.5):
+            # Count pixels in band for ranking
+            n = sum(1 for yy in range(y0, y1)
+                    for xx in range(x0, x1) if pred(px[xx, yy][:3]))
+            bands.append({"x": x0, "y": y0, "w": bw, "h": bh, "n": n})
+    return bands
+
+
+def merge_vertical_bands(bands, gap_tol=40, x_iou_min=0.7):
+    """Merge stacked bands that are the same header split by white title glyphs."""
+    if not bands:
+        return []
+    bands = sorted(bands, key=lambda b: (b["y"], b["x"]))
+    merged = []
+    for b in bands:
+        if not merged:
+            merged.append(dict(b))
+            continue
+        prev = merged[-1]
+        # horizontal overlap
+        ix1 = max(prev["x"], b["x"])
+        ix2 = min(prev["x"] + prev["w"], b["x"] + b["w"])
+        ow = max(0, ix2 - ix1)
+        x_overlap = ow / min(prev["w"], b["w"]) if min(prev["w"], b["w"]) else 0
+        vertical_gap = b["y"] - (prev["y"] + prev["h"])
+        if x_overlap >= x_iou_min and -2 <= vertical_gap <= gap_tol:
+            x0 = min(prev["x"], b["x"])
+            y0 = min(prev["y"], b["y"])
+            x1 = max(prev["x"] + prev["w"], b["x"] + b["w"])
+            y1 = max(prev["y"] + prev["h"], b["y"] + b["h"])
+            merged[-1] = {
+                "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0,
+                "n": prev["n"] + b["n"],
+            }
+        else:
+            merged.append(dict(b))
+    return merged
+
+
 def cards(im: Image.Image):
+    """Detect cards via colored header bars (any deck), then cream fallback.
+
+    Prefer row-band headers so same-hue diagram borders do not swallow the bar.
+    Merge bands stacked through white header text (one physical header → one bar).
+    """
     w, h = im.size
     bars = []
     for pred in (is_header_green, is_header_blue, is_header_yellow, is_header_red):
-        bars.extend(blobs(im, pred, min_area=int(w * h * 0.004)))
-    bars = [
-        b for b in bars
-        if b["w"] > w * 0.12
-        and b["w"] < w * 0.55
-        and b["h"] < h * 0.22
-        and b["w"] > b["h"] * 1.8
-    ]
+        bars.extend(merge_vertical_bands(header_bands(im, pred)))
     bars.sort(key=lambda b: b["n"], reverse=True)
-    bars = bars[:4]
-    bars.sort(key=lambda b: (b["y"], b["x"]))
-    if len(bars) >= 3:
-        return bars
+    kept = []
+    for b in bars:
+        if any(iou(b, k) > 0.35 for k in kept):
+            continue
+        kept.append(b)
+        if len(kept) >= 6:
+            break
+    kept.sort(key=lambda b: (b["y"], b["x"]))
+    if len(kept) >= 2:
+        return kept
+    # Fallback: old blob path (short bars only)
+    blob_bars = []
+    for pred in (is_header_green, is_header_blue, is_header_yellow, is_header_red):
+        blob_bars.extend(blobs(im, pred, min_area=int(w * h * 0.003)))
+    blob_bars = [
+        b for b in blob_bars
+        if b["w"] > w * 0.12 and b["w"] < w * 0.55
+        and b["h"] < h * 0.18 and b["h"] > h * 0.03
+        and b["w"] > b["h"] * 1.5
+    ]
+    blob_bars.sort(key=lambda b: b["n"], reverse=True)
+    kept = []
+    for b in blob_bars:
+        if any(iou(b, k) > 0.35 for k in kept):
+            continue
+        kept.append(b)
+        if len(kept) >= 6:
+            break
+    kept.sort(key=lambda b: (b["y"], b["x"]))
+    if len(kept) >= 2:
+        return kept
     found = blobs(im, is_cream, min_area=int(w * h * 0.015))
     return [
         b for b in found

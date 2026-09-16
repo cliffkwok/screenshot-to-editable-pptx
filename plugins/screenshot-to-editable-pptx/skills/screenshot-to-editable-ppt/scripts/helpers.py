@@ -142,14 +142,14 @@ def add_shape_with_text(
     fill=None, line=None, lw=None, rad=None,
     bold=False, color="#FFFFFF", font="Arial",
     align="center", anchor="middle", margin_pt=3, autofit=False,
-    fit_to_shape=True, circle=False, pad_frac=None,
+    fit_to_shape=True, circle=False, pad_frac=None, wrap=False,
 ):
     """Create a shape and put `text` in its text frame (not a floating text box)."""
     sh = add_shape(slide, typ, l, t, w, h, fill=fill, line=line, lw=lw, rad=rad)
     set_shape_text(
         sh, text, size_pt, bold=bold, color=color, font=font,
         align=align, anchor=anchor, margin_pt=margin_pt, autofit=autofit,
-        fit_to_shape=fit_to_shape, circle=circle, pad_frac=pad_frac,
+        fit_to_shape=fit_to_shape, circle=circle, pad_frac=pad_frac, wrap=wrap,
     )
     return sh
 
