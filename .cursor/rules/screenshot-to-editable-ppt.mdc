@@ -1,0 +1,13 @@
+---
+description: Rebuild slide screenshots as native editable PowerPoint — never paste the image.
+globs:
+alwaysApply: false
+---
+
+# Screenshot to editable PowerPoint
+
+When the user gives a screenshot (or Fit-to-Window capture) and wants a PowerPoint, follow the skill `screenshot-to-editable-ppt`.
+
+- Rebuild with **native shapes and text**. Do not paste the screenshot as a picture.
+- Do not deliver until `source_audit.py`, `verify_pptx.py`, **and** `compare_render.py` all pass.
+- After ANY modification, rebuild and re-run all three gates.

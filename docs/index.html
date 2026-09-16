@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Screenshot → Editable PowerPoint</title>
+  <meta name="description" content="Rebuild slide screenshots as native editable PowerPoint. Shapes, fonts, and colors gated before delivery." />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a222c;
+      --text: #e7ecf1;
+      --muted: #9aa7b5;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1b3a55 0%, var(--bg) 55%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -0.03em; margin: 0 0 12px; }
+    .lead { color: var(--muted); font-size: 1.15rem; max-width: 40rem; }
+    .cta {
+      display: inline-block; margin-top: 24px; padding: 12px 18px;
+      background: var(--accent); color: #041018; font-weight: 700;
+      text-decoration: none; border-radius: 8px;
+    }
+    .cta.secondary { background: transparent; color: var(--text); border: 1px solid #334455; margin-left: 10px; }
+    .shot {
+      margin: 36px 0; border-radius: 12px; overflow: hidden;
+      border: 1px solid #2a3644; background: var(--card);
+    }
+    .shot img { display: block; width: 100%; height: auto; }
+    .caption { padding: 12px 16px; color: var(--muted); font-size: 0.92rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 28px; }
+    .card { background: var(--card); border: 1px solid #2a3644; border-radius: 10px; padding: 16px; }
+    .card h3 { margin: 0 0 8px; font-size: 1rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    .ok { color: var(--ok); font-weight: 600; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; }
+    footer { margin-top: 48px; color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Screenshot → Editable PowerPoint</h1>
+    <p class="lead">
+      Rebuild a slide screenshot as native editable <code>.pptx</code> —
+      real shapes, real text, grouped icons. Not a pasted picture.
+      Delivery is blocked until three automated gates pass.
+    </p>
+    <p>
+      <a class="cta" href="https://github.com/cliffkwok/screenshot-to-editable-pptx">View on GitHub</a>
+      <a class="cta secondary" href="https://github.com/cliffkwok/screenshot-to-editable-pptx#install">Install</a>
+    </p>
+
+    <div class="shot">
+      <img src="assets/compare-side-by-side.png" alt="Original vs rebuilt PowerPoint side by side" />
+      <div class="caption">Original screenshot (left) vs PowerPoint slideshow raster of the rebuilt editable deck (right).</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ok">1.</span> Source audit</h3>
+        <p>Spec text boxes must sit on real ink in the original photo. Glyph height must match declared pt.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ok">2.</span> Structure verify</h3>
+        <p>Shape, font, and sampled colors checked against the screenshot and the built PPTX.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ok">3.</span> Visual compare</h3>
+        <p>Real PowerPoint slideshow raster vs original — card IoU and layout, not Quick Look.</p>
+      </div>
+    </div>
+
+    <footer>
+      MIT · <a href="https://github.com/cliffkwok/screenshot-to-editable-pptx">cliffkwok/screenshot-to-editable-pptx</a>
+    </footer>
+  </main>
+</body>
+</html>

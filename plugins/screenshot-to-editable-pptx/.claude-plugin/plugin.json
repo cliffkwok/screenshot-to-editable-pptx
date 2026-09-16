@@ -1,0 +1,14 @@
+{
+  "name": "screenshot-to-editable-pptx",
+  "version": "1.0.0",
+  "description": "Rebuild a slide screenshot as native editable PowerPoint using shapes, text, and grouped icons — not a pasted image. Must pass source_audit, verify_pptx, and compare_render before delivery.",
+  "skills": "./skills/",
+  "author": {
+    "name": "cliffkwok",
+    "url": "https://github.com/cliffkwok"
+  },
+  "homepage": "https://github.com/cliffkwok/screenshot-to-editable-pptx",
+  "repository": "https://github.com/cliffkwok/screenshot-to-editable-pptx",
+  "license": "MIT",
+  "keywords": ["powerpoint", "pptx", "screenshots", "slides", "editable", "python-pptx"]
+}

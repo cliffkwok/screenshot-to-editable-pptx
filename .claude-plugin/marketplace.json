@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "screenshot-to-editable-pptx",
+  "description": "Rebuild slide screenshots as native editable PowerPoint — shapes, fonts, and colors gated before delivery.",
+  "owner": {
+    "name": "cliffkwok",
+    "url": "https://github.com/cliffkwok"
+  },
+  "plugins": [
+    {
+      "name": "screenshot-to-editable-pptx",
+      "description": "Screenshot → native editable .pptx with source_audit, verify_pptx, and compare_render gates.",
+      "source": "./plugins/screenshot-to-editable-pptx",
+      "category": "productivity",
+      "tags": ["powerpoint", "pptx", "screenshots", "slides", "editable", "design"]
+    }
+  ]
+}
