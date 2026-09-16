@@ -87,19 +87,24 @@ def audit(spec: dict, original: Path, hints_data: dict | None):
             continue
         if el.get("font_size_pt") is None:
             continue
-        try:
-            box_px = pct_to_px(
-                el["x_pct"], el["y_pct"], el["w_pct"], el["h_pct"],
-                src_w, src_h, slide_w, slide_h, fit,
-            )
-        except KeyError:
-            failures.append({
-                "element": name,
-                "code": "missing_box",
-                "message": "text element missing x_pct/y_pct/w_pct/h_pct",
-            })
-            continue
-        box_px = [int(round(v)) for v in box_px]
+        # Prefer explicit ink box (glyph measure). Container placement boxes
+        # live in x_pct/… for verify and must not drive glyph-height audit.
+        if el.get("box_px") and len(el["box_px"]) == 4:
+            box_px = [int(round(v)) for v in el["box_px"]]
+        else:
+            try:
+                box_px = pct_to_px(
+                    el["x_pct"], el["y_pct"], el["w_pct"], el["h_pct"],
+                    src_w, src_h, slide_w, slide_h, fit,
+                )
+            except KeyError:
+                failures.append({
+                    "element": name,
+                    "code": "missing_box",
+                    "message": "text element missing box_px and x_pct/y_pct/w_pct/h_pct",
+                })
+                continue
+            box_px = [int(round(v)) for v in box_px]
         coverage, ink_h = ink_coverage(im, box_px)
         refined = refine_ink_box(im, box_px, extra_pad=2)
         glyph_h = refined[1] if refined else ink_h
@@ -127,7 +132,25 @@ def audit(spec: dict, original: Path, hints_data: dict | None):
         else:
             ratio = glyph_h / expected if expected else 0
             rec["glyph_ratio"] = round(ratio, 3)
-            if ratio < GLYPH_RATIO_LO or ratio > GLYPH_RATIO_HI:
+            host = el.get("host_box_px")
+            inside_host = False
+            if host and len(host) == 4:
+                from mapping import ink_inside_shape
+                inside_host = ink_inside_shape(box_px, host, pad_px=0)
+                rec["inside_host"] = inside_host
+                if not inside_host:
+                    rec["ok"] = False
+                    failures.append({
+                        "element": name,
+                        "code": "text_exceeds_shape",
+                        "message": "text ink is not fully inside the host shape (visual: text must not overflow the fill)",
+                        "box_px": box_px,
+                        "host_box_px": host,
+                    })
+            # Shape-native labels: containment is the size gate; glyph-vs-pt
+            # can disagree because pt is capped to the shape inner box.
+            skip_glyph = (bool(host) and inside_host) or el.get("placement") == "container"
+            if (not skip_glyph) and (ratio < GLYPH_RATIO_LO or ratio > GLYPH_RATIO_HI):
                 rec["ok"] = False
                 failures.append({
                     "element": name,
@@ -139,7 +162,7 @@ def audit(spec: dict, original: Path, hints_data: dict | None):
                     "glyph_height_px": glyph_h,
                     "expected_glyph_height_px": round(expected, 1),
                 })
-            else:
+            elif rec.get("ok") is not False:
                 rec["ok"] = True
         if hints:
             score, iou, hint = _best_hint(box_px, hints, el.get("text"))

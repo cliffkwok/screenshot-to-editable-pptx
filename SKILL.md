@@ -21,6 +21,23 @@ Do **not** give the user a `.pptx` path, open the file, or say the work is done 
 2. `verify_pptx.py` exits 0 with `gates.shape`, `gates.font`, `gates.color` all true
 3. `compare_render.py` exits 0 — a **real PowerPoint slideshow raster** vs the original screenshot (card IoU, no origin-stacked groups, highlight not covering extra glyphs)
 
+## Universal measure rule (every screenshot, every slide)
+
+**Read and follow** [references/universal-measure-rule.md](references/universal-measure-rule.md) on **every** rebuild — including the next different screenshot. Do not wait for the user to re-teach it.
+
+One-line law: **measure every element against its neighbors (up/down/left/right); never place by leftover space.**
+
+Must-do when creating the slide:
+
+1. **Text inside a shape** → measure ink ↔ shape edge (`pad_frac`); shape-native Edit Text.
+2. **Text near a shape** → correct host + measured gap; **wrap only if the photo wraps** (single-line labels stay `wrap=False` with width ≥ ink).
+3. **Text placeholders** → pad to shape above/below; wrap from the photo.
+4. **Flow groups** → group bbox vs surrounding card: `pad_L/R`, `pad_from_rule` (often > 0), `pad_B`. Never erase top body whitespace by gluing a fan to the divider. Never center leftover space.
+5. **Dividers** that touch the card L/R → full card width.
+6. **Arrow tips** that touch a shape → end on that edge.
+
+When the user corrects one instance, **propagate to every similar element** and keep `references/universal-measure-rule.md` updated.
+
 ```bash
 python3 scripts/text_hints.py \
   --image <screenshot.png> \
@@ -131,7 +148,13 @@ latin_pt = glyph_h_px / img_h × slide_h_in × 72 / 0.72
 cjk_pt   = glyph_h_px / img_h × slide_h_in × 72 / 0.88
 ```
 
-Same-height lines share one `size_group` and one locked pt (`size_group_font_pt_latin` / `_cjk`). Copy that into spec — never invent 38/16/11. One PowerPoint text box per visual line, `wrap=False`, box = ink + pad (`pad_ink_box_px` / `add_line_text` / `add_text_from_hint`).
+Same-height lines share one `size_group` and one locked pt (`size_group_font_pt_latin` / `_cjk`). Copy that into spec — never invent 38/16/11.
+
+**Two text modes:**
+1. **Measured single line** (`add_line_text`, `wrap=False`): titles, node labels — one box per visual line, box = ink + pad.
+2. **Placeholder flow** (`add_flow_text` / `caption_band_box` + `wrap=True`): captions that wrap — **one** text box. **Measure padding to the shape above and the element below**; that sets the placeholder’s `y`/`h`. Measure width so line breaks match the photo; set `align` (center/left) from the source. Never stretch the box into empty leftover space.
+
+**Flowing shapes (same distance rule):** arrows, fans, capsules, and divider lines are placed by measuring gap to the upside element (title placeholder / rule / parent border) and to siblings / card edges. If a rule touches the card L/R in the screenshot, draw it full-width. Do not evenly pack leftover body space. For arrow+capsule stacks, measure the **flow group** bbox (L/R/T/B vs card) and keep **arrow lengths** equal to the original.
 
 **Bold is measured, not assumed.** `text_measure.py` compares stroke stem width to glyph height (Arial regular ≈ 0.10–0.15 em, bold ≈ 0.20+). White-on-color headers and small captions default to regular — do not set `bold=True` unless measure says so.
 
@@ -165,12 +188,14 @@ Rules that caused past misses:
 - `disable_shadow(shape)` on every shape. Only call `add_shadow` when Pass B said yes.
 - Rounded rect `adjustments[0]`: 0.03–0.08 small, 0.15–0.25 large, **0.5 = pill**.
 - Circle = `OVAL` with width == height.
-- Icons are often several shapes. Do not fake them with one shape or a letter unless the source is that simple.
-- **One visual line = one text box**, `wrap=False`. Size the box from the measured ink (`pad_ink_box_px`), not `char_count × 0.6`. Multi-line copy is several stacked boxes that share a `size_group`. After a first PowerPoint raster, `text_fit.py` nudges `dx/dy` and pt from original vs render ink.
-- Diagram spines use `connect_lr` / `connect_shapes` so lines stay attached to nodes in PowerPoint.
+- Diagram spines use `connect_lr` / `connect_shapes` / `add_line`. **Arrows are line properties** (`end_arrow="triangle"` → PowerPoint Line → End Arrow), never `RIGHT_ARROW` shapes. Measure stroke px → pt (`stroke_px_to_pt`). **Outline weight ≠ connector weight** — a pill/capsule outline is often 2–3× heavier than the gray arrow line; measure each role separately. **Connector shape:** detect straight vs elbow (sharp corners) vs **curve** (smooth arcs) from the photo — Parallel fan-in/out is usually `kind="curve"`, not elbow.
+- Icons are often several shapes. Do not fake them with one shape or a letter unless the source is that simple. **Capsule + two dots (or any shell + inner marks) → one group** (`add_pill_icon` / `group_shapes`). That icon group must stay **top-level** — do not nest it inside the card group, or PowerPoint click-selects the inner rounded rect (yellow radius handle) instead of the group. Connectors stay outside the icon group.
+- **Text boxes:** measured single-line labels use `wrap=False` (one box per line). Captions that wrap in the photo use **one placeholder** with `wrap=True` (`add_flow_text`) so text flows to the next line — do not stack fake line boxes.
+- **One visual line = one text box** for measured labels only, `wrap=False`. Size from measured ink (`pad_ink_box_px`). After a first PowerPoint raster, `text_fit.py` nudges `dx/dy` and pt from original vs render ink.
 - No raster pictures unless the screenshot actually contains a photo.
 - **Groups:** never assign `shape.left` / `shape.top` after a shape is inside `p:grpSp`. Snapshot EMUs, move the XML nodes, write **local** `a:off`, set `chOff` to `(0,0)`. Double-offset (`chOff = min_x` AND children already subtracted) makes PowerPoint park the group at the slide origin. `python-pptx` `.left` will still look correct — verify must use the OOXML formula `off + (childOff - chOff)`. A card that jumps to the top-left is this bug, not a layout choice.
 - **Glyph highlights:** a marker behind part of a title is not a second screenshot rectangle. Screenshot gold blobs pick up proofing squiggles and JPEG fringe and come out ~2× too wide. Lock the bar to the substring: CJK advance = 1em at the title size, title centered, `index × em`. Width = `len(substring) × em` plus a few px pad. Use `cjk_centered_substring_box`.
+- **Container padding:** every card/header/diagram/caption is a parent box. **Measure each container’s pixel box** — sibling cards can differ in height/width. Measure inset from parent edge to children and gaps between siblings. Text *on* a filled shape → shape text frame (`set_shape_text`). **Measure text↔shape gap on the screenshot** (`measure_text_in_shape` → `pad_frac` + glyph pt); `font_pt_fit_shape` caps so ink keeps that breathing room. Never let header/LLM text run edge-to-edge in a circle. Free labels near nodes stay `label_above` / `label_below`.
 
 ### 6. Inspect, then verify
 

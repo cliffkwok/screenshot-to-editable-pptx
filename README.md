@@ -23,11 +23,12 @@ This skill rebuilds the slide with **object-level PowerPoint shapes** and refuse
 ## Features
 
 - **Native shapes + text** — rectangles, rounds, connectors, grouped icons; never a full-slide screenshot paste
-- **Glyph-box font sizing** — point size from ink height, not a guessed `pt`
-- **One text box per visual line** — no multi-line wrap guessing
+- **Universal measure rule** — every element placed by distance to neighbors (up/down/left/right); flow-group vs surrounding pads; wrap from the photo — see [references/universal-measure-rule.md](references/universal-measure-rule.md)
+- **Glyph-box font sizing** — point size from ink height + in-shape `pad_frac`, not a guessed `pt`
+- **Measured text modes** — single-line labels (`wrap=False`) vs caption placeholders (`wrap=True`) only when the photo wraps
 - **Measured bold** — stem contrast decides weight; no assumed bold
-- **Attached connectors** — OOXML `stCxn` / `endCxn` when lines should stick to shapes
-- **Meaningful grouping** — one group per card / icon / badge; local children, `chOff=(0,0)`
+- **Attached connectors** — OOXML `stCxn` / `endCxn` when lines should stick to shapes; straight / elbow / curve from photo
+- **Meaningful grouping** — one group per card / icon / badge; capsule+dots as top-level icon groups
 - **Fail-closed delivery** — three gates must pass before the agent sends the file
 
 ## Three gates before delivery

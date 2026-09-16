@@ -416,6 +416,10 @@ def check_shape(spec, inspected, gate):
                           ("w_pct", SIZE_PCT_TOL), ("h_pct", SIZE_PCT_TOL)):
             if el.get(axis) is None:
                 continue
+            # Container-placed text: box is the parent inset, not ink-tight.
+            # Position is owned by text_in_box / inset_box; skip pct match.
+            if el.get("placement") == "container" and el.get("text"):
+                continue
             actual = target.get(axis)
             if actual is None:
                 continue

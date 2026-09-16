@@ -14,14 +14,18 @@ from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
-from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR, MSO_SHAPE_TYPE
 from pptx.oxml.ns import qn
 from lxml import etree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mapping import (  # noqa: E402
+    Image,
     expected_glyph_h_px,
+    font_pt_fit_shape,
     font_pt_from_glyph,
+    ink_inside_shape,
+    measure_text_in_shape,
     pad_ink_box_px,
     pct_to_px,
     px_box_to_inches,
@@ -81,15 +85,165 @@ def add_shape(slide, typ, l, t, w, h, fill=None, line=None, lw=None, rad=None):
     return sh
 
 
-def add_line(slide, x1, y1, x2, y2, color="#000000", width=Pt(1.5), dash=None):
-    """Real PPT connector line (not a thin rectangle). Prefer this for thin strokes."""
+def set_shape_text(
+    shape, text, size_pt, bold=False, color="#FFFFFF", font="Arial",
+    align="center", anchor="middle", margin_pt=3, autofit=False, wrap=False,
+    fit_to_shape=True, circle=False, pad_frac=None,
+):
+    """Put text *inside* a shape (PowerPoint: select shape → Edit Text).
+
+    Prefer this over a separate text box when the screenshot shows a label
+    on a filled bar/pill/circle. Point size is capped so the line box stays
+    inside the shape with the same gap as the photo (`pad_frac` measured from
+    ink vs fill). `autofit` is off by default so PPT does not fight the size.
+    """
+    pt = float(size_pt)
+    if fit_to_shape:
+        pt = font_pt_fit_shape(
+            text,
+            shape.width.inches,
+            shape.height.inches,
+            glyph_pt=pt,
+            margin_pt=margin_pt,
+            circle=circle,
+            pad_frac=pad_frac,
+        )
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = wrap
+    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE if autofit else MSO_AUTO_SIZE.NONE
+    if anchor == "middle":
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    elif anchor == "bottom":
+        tf.vertical_anchor = MSO_ANCHOR.BOTTOM
+    else:
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+    m = Pt(margin_pt)
+    tf.margin_left = m
+    tf.margin_right = m
+    tf.margin_top = m
+    tf.margin_bottom = m
+    p = tf.paragraphs[0]
+    p.alignment = ALIGN.get(align, PP_ALIGN.CENTER)
+    p.space_before = Pt(0)
+    p.space_after = Pt(0)
+    run = p.add_run()
+    run.text = text
+    run.font.size = Pt(pt)
+    run.font.bold = bold
+    run.font.color.rgb = rgb(color) if isinstance(color, str) else color
+    run.font.name = font
+    shape._fit_font_pt = pt
+    return shape
+
+
+def add_shape_with_text(
+    slide, typ, l, t, w, h, text, size_pt,
+    fill=None, line=None, lw=None, rad=None,
+    bold=False, color="#FFFFFF", font="Arial",
+    align="center", anchor="middle", margin_pt=3, autofit=False,
+    fit_to_shape=True, circle=False, pad_frac=None,
+):
+    """Create a shape and put `text` in its text frame (not a floating text box)."""
+    sh = add_shape(slide, typ, l, t, w, h, fill=fill, line=line, lw=lw, rad=rad)
+    set_shape_text(
+        sh, text, size_pt, bold=bold, color=color, font=font,
+        align=align, anchor=anchor, margin_pt=margin_pt, autofit=autofit,
+        fit_to_shape=fit_to_shape, circle=circle, pad_frac=pad_frac,
+    )
+    return sh
+
+
+def add_line(slide, x1, y1, x2, y2, color="#000000", width=Pt(1.5), dash=None,
+             begin_arrow=None, end_arrow=None, arrow_size="sm"):
+    """Real PPT connector line (not a thin rectangle or arrow AutoShape)."""
     sh = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
     sh.line.color.rgb = rgb(color) if isinstance(color, str) else color
     sh.line.width = width
     if dash is not None:
         sh.line.dash_style = dash
+    set_line_arrows(sh, begin=begin_arrow, end=end_arrow, size=arrow_size)
     disable_shadow(sh)
     return sh
+
+
+# OOXML arrowhead types shown in Format Shape → Line → Begin/End Arrow
+_ARROW_TYPE = {
+    None: None,
+    "none": None,
+    "triangle": "triangle",
+    "arrow": "triangle",
+    "stealth": "stealth",
+    "diamond": "diamond",
+    "oval": "oval",
+    "open": "arrow",
+}
+_ARROW_SIZE = {"sm": "sm", "small": "sm", "med": "med", "medium": "med",
+               "lg": "lg", "large": "lg"}
+
+
+def set_line_arrows(shape, begin=None, end=None, size="sm"):
+    """Set PowerPoint line arrowheads (Format Shape → Line → Begin/End Arrow).
+
+    Never fake an arrow with MSO_SHAPE.RIGHT_ARROW. `begin` is headEnd
+    (start of the connector); `end` is tailEnd.
+    """
+    ln = shape.line._get_or_add_ln()
+    for tag in ("a:headEnd", "a:tailEnd"):
+        el = ln.find(qn(tag))
+        if el is not None:
+            ln.remove(el)
+    sz = _ARROW_SIZE.get(size, "sm")
+    b = _ARROW_TYPE.get(begin, begin)
+    e = _ARROW_TYPE.get(end, end)
+    if b:
+        etree.SubElement(ln, qn("a:headEnd"), {"type": str(b), "w": sz, "len": sz})
+    if e:
+        etree.SubElement(ln, qn("a:tailEnd"), {"type": str(e), "w": sz, "len": sz})
+    return shape
+
+
+def stroke_px_to_pt(stroke_px, img_h, slide_h_in=7.5):
+    """Screenshot stroke thickness → line width in points."""
+    if not stroke_px or img_h <= 0:
+        return 1.0
+    return max(0.5, round(float(stroke_px) / float(img_h) * float(slide_h_in) * 72.0, 2))
+
+
+def measure_stroke_px(im, x, y, axis="v", dark=200, span=18):
+    """Perpendicular run-length of dark ink at (x,y). axis='v' for a horizontal line."""
+    if Image is None:
+        raise RuntimeError("Pillow is required")
+    rgb = im.convert("RGB") if im.mode != "RGB" else im
+    px = rgb.load()
+    w, h = rgb.size
+
+    def darkish(xx, yy):
+        if not (0 <= xx < w and 0 <= yy < h):
+            return False
+        r, g, b = px[xx, yy]
+        return (r + g + b) / 3 < dark
+
+    best = 0
+    if axis == "v":
+        for x0 in range(max(0, x - 6), min(w, x + 7)):
+            run = 0
+            for yy in range(max(0, y - span), min(h, y + span + 1)):
+                if darkish(x0, yy):
+                    run += 1
+                    best = max(best, run)
+                else:
+                    run = 0
+    else:
+        for y0 in range(max(0, y - 6), min(h, y + 7)):
+            run = 0
+            for xx in range(max(0, x - span), min(w, x + span + 1)):
+                if darkish(xx, y0):
+                    run += 1
+                    best = max(best, run)
+                else:
+                    run = 0
+    return best
 
 
 # Connection sites on a shape bounding box (python-pptx convention):
@@ -105,11 +259,17 @@ _CONNECTOR_KIND = {
 def connect_shapes(
     slide, start_shape, start_idx, end_shape, end_idx,
     color="#000000", width=Pt(1.5), kind="straight", dash=None,
+    begin_arrow=None, end_arrow=None, arrow_size="sm",
 ):
     """Attach a connector to two shapes so it stays connected in PowerPoint.
 
     Circles use the same 4 bbox sites; those land on N/E/S/W of the oval.
-    Create the two shapes first, then this connector.
+    Create the two shapes first, then this connector. Arrowheads are line
+    properties (Format Shape → Line), not arrow AutoShapes.
+
+    `kind`: detect from the screenshot — "straight", "elbow" (right angles),
+    or "curve" (smooth arcs; PowerPoint Curved Connector / Curve look).
+    Do not default to elbow when the photo shows smooth bends.
     """
     def _pt(shape, idx):
         x, y, w, h = int(shape.left), int(shape.top), int(shape.width), int(shape.height)
@@ -129,13 +289,52 @@ def connect_shapes(
     sh.line.width = width
     if dash is not None:
         sh.line.dash_style = dash
+    set_line_arrows(sh, begin=begin_arrow, end=end_arrow, size=arrow_size)
     disable_shadow(sh)
     return sh
 
 
-def connect_lr(slide, a, b, color="#000000", width=Pt(1.5), kind="straight", dash=None):
+def connect_lr(slide, a, b, color="#000000", width=Pt(1.5), kind="straight", dash=None,
+               begin_arrow=None, end_arrow=None, arrow_size="sm"):
     """Connect a's right site to b's left site."""
-    return connect_shapes(slide, a, CXN_RIGHT, b, CXN_LEFT, color, width, kind, dash)
+    return connect_shapes(
+        slide, a, CXN_RIGHT, b, CXN_LEFT, color, width, kind, dash,
+        begin_arrow=begin_arrow, end_arrow=end_arrow, arrow_size=arrow_size,
+    )
+
+
+def inset_box(box, pad=0, pad_l=None, pad_t=None, pad_r=None, pad_b=None):
+    """Shrink a pixel box by padding. Uniform `pad` or per-side overrides."""
+    x, y, w, h = [float(v) for v in box]
+    l = pad if pad_l is None else pad_l
+    t = pad if pad_t is None else pad_t
+    r = pad if pad_r is None else pad_r
+    b = pad if pad_b is None else pad_b
+    return (x + l, y + t, max(1.0, w - l - r), max(1.0, h - t - b))
+
+
+def center_in(parent, child_w, child_h):
+    """Pixel box for a child of size (child_w, child_h) centered in parent."""
+    px, py, pw, ph = [float(v) for v in parent]
+    return (px + (pw - child_w) / 2.0, py + (ph - child_h) / 2.0, child_w, child_h)
+
+
+def band(parent, y0_frac, y1_frac):
+    """Horizontal band inside parent from y0_frac→y1_frac of parent height."""
+    x, y, w, h = [float(v) for v in parent]
+    t = y + h * y0_frac
+    b = y + h * y1_frac
+    return (x, t, w, max(1.0, b - t))
+
+
+def label_above(cx, cy, node_r, text_w, text_h, gap=6):
+    """Label box centered above a circular node."""
+    return (cx - text_w / 2.0, cy - node_r - gap - text_h, text_w, text_h)
+
+
+def label_below(cx, cy, node_r, text_w, text_h, gap=6):
+    """Label box centered below a circular node."""
+    return (cx - text_w / 2.0, cy + node_r + gap, text_w, text_h)
 
 
 def add_line_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
@@ -144,6 +343,65 @@ def add_line_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
     return add_text(
         slide, l, t, w, h, text, size_pt, bold=bold, color=color,
         align=align, font=font, auto_fit=False, anchor=anchor, wrap=False,
+    )
+
+
+def text_in_box(slide, box_px, text, size_pt, img_w, img_h, slide_w=13.33, slide_h=7.5,
+                fit="height", bold=False, color="#1A1A1A", align="center", font="Arial",
+                pad=2, wrap=False, anchor="middle"):
+    """Place text in a container box (parent inset).
+
+    `wrap=False` (default): one visual line — measured labels, titles.
+    `wrap=True`: PowerPoint placeholder flow — paragraph wraps inside the box
+    width (captions that break to the next line in the screenshot).
+    """
+    x, y, w, h = inset_box(box_px, pad=pad)
+    l, t, ww, hh = px_box_to_inches(x, y, w, h, img_w, img_h, slide_w, slide_h, fit)
+    if wrap:
+        return add_text(
+            slide, l, t, ww, hh, text, size_pt,
+            bold=bold, color=color, align=align, font=font,
+            auto_fit=False, anchor=anchor, wrap=True,
+        )
+    return add_line_text(
+        slide, l, t, ww, hh, text, size_pt,
+        bold=bold, color=color, align=align, font=font, anchor=anchor,
+    )
+
+
+def caption_band_box(card_box, diagram_box, pad_top_px, pad_bot_px, side_pad_px=10):
+    """Placeholder box for a caption under a diagram, from measured gaps.
+
+    Measure on the screenshot:
+      pad_top = distance from diagram bottom edge → caption ink top
+      pad_bot = distance from caption ink bottom → next element / card bottom
+    Width ≈ card width − 2×side_pad (or measured ink width + side pad).
+    Alignment is usually center for card footers; left for callouts beside nodes.
+    """
+    cx, cy, cw, ch = [float(v) for v in card_box]
+    _dx, _dy, _dw, dh = [float(v) for v in diagram_box]
+    diag_bottom = _dy + dh
+    y = diag_bottom + float(pad_top_px)
+    # Prefer explicit bottom pad from card bottom when provided
+    h = (cy + ch - float(pad_bot_px)) - y
+    if h < 12:
+        h = 12.0
+    x = cx + float(side_pad_px)
+    w = max(20.0, cw - 2 * float(side_pad_px))
+    return (x, y, w, h)
+
+
+def add_flow_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
+                  align="center", font="Arial", anchor="middle"):
+    """One text-box placeholder: word wrap on, text flows to the next line.
+
+    Use when the screenshot shows a wrapped paragraph (caption under a card),
+    not when each line is a separately measured label.
+    """
+    return add_text(
+        slide, l, t, w, h, text, size_pt,
+        bold=bold, color=color, align=align, font=font,
+        auto_fit=False, anchor=anchor, wrap=True,
     )
 
 
@@ -271,7 +529,38 @@ def _next_cNvPr_id(spTree) -> int:
     return max(ids) + 1
 
 
-def group_shapes(slide, shapes, name="Group"):
+def add_pill_icon(
+    slide, l, t, w, h, stroke,
+    fill="#FFFFFF", lw=None, eye_frac=0.26, eye_x=(0.32, 0.68), name="pill",
+):
+    """Capsule (rounded rect) + two eye dots → one PowerPoint group.
+
+    Composite icons that read as a single glyph (pill shell + inner dots)
+    must be grouped. Select once in PowerPoint = one bounding box.
+    Connectors stay *outside* this group and attach to the group shape.
+
+    `lw` is the capsule outline weight — usually heavier than diagram
+    connectors (measure both on the screenshot; do not reuse one pt).
+    """
+    if lw is None:
+        lw = Pt(2.5)
+    body = add_shape(
+        slide, MSO_SHAPE.ROUNDED_RECTANGLE, l, t, w, h,
+        fill=fill, line=stroke, lw=lw, rad=0.5,
+    )
+    eye = h * eye_frac
+    ey = t + (h - eye) / 2
+    dots = []
+    for fx in eye_x:
+        dots.append(add_shape(
+            slide, MSO_SHAPE.OVAL,
+            l + w * fx - eye / 2, ey, eye, eye,
+            fill=stroke, line=None,
+        ))
+    return group_shapes(slide, [body, *dots], name=name)
+
+
+def group_shapes(slide, shapes, name="Group", nest_groups=False):
     """Group shapes via OOXML so the result scales in PowerPoint.
 
     PowerPoint world coords are:
@@ -282,11 +571,28 @@ def group_shapes(slide, shapes, name="Group"):
     children (or assigning shape.left/top after the node is inside grpSp)
     double-offsets the group. PowerPoint then parks it at the slide origin
     even though python-pptx .left still looks correct.
+
+    By default, existing groups (e.g. a pill icon) stay on the slide as
+    their own groups. Nesting them inside a card group makes PowerPoint
+    click-select the inner rounded rect instead of the icon group.
+    Pass nest_groups=True only when you truly need a group-of-groups.
     """
     if not shapes:
         return None
+    members = []
+    for s in shapes:
+        if s is None:
+            continue
+        try:
+            if (not nest_groups) and getattr(s, "shape_type", None) == MSO_SHAPE_TYPE.GROUP:
+                continue
+        except Exception:
+            pass
+        members.append(s)
+    if not members:
+        return None
     spTree = slide.shapes._spTree
-    records = [(s, int(s.left), int(s.top), int(s.width), int(s.height)) for s in shapes]
+    records = [(s, int(s.left), int(s.top), int(s.width), int(s.height)) for s in members]
     min_x = min(r[1] for r in records)
     min_y = min(r[2] for r in records)
     max_x = max(r[1] + r[3] for r in records)
@@ -325,6 +631,10 @@ def group_shapes(slide, shapes, name="Group"):
             raise RuntimeError(f"group {name}: {s.name} has no a:off")
         off.set("x", str(left - min_x))
         off.set("y", str(top - min_y))
+    # Return the python-pptx GroupShape wrapper (has .left/.top for connectors).
+    for shape in slide.shapes:
+        if shape._element is grpSp:
+            return shape
     return grpSp
 
 
@@ -332,10 +642,16 @@ def group_shapes(slide, shapes, name="Group"):
 __all__ = [
     "MSO_SHAPE", "Inches", "Pt", "Emu", "PP_ALIGN", "MSO_ANCHOR", "MSO_AUTO_SIZE",
     "rgb", "new_presentation", "set_background", "disable_shadow",
-    "add_shape", "add_text", "add_line", "add_line_text", "add_text_from_hint",
-    "connect_shapes", "connect_lr", "CXN_TOP", "CXN_LEFT", "CXN_BOTTOM", "CXN_RIGHT",
-    "add_shadow",
+    "add_shape", "add_shape_with_text", "set_shape_text", "add_text", "add_flow_text",
+    "add_line", "add_line_text", "add_text_from_hint",
+    "connect_shapes", "connect_lr", "set_line_arrows", "stroke_px_to_pt", "measure_stroke_px",
+    "CXN_TOP", "CXN_LEFT", "CXN_BOTTOM", "CXN_RIGHT",
+    "add_shadow", "add_pill_icon",
     "inch_pct", "group_shapes", "cjk_em_in", "cjk_centered_substring_box",
-    "font_pt_from_glyph", "expected_glyph_h_px", "pad_ink_box_px",
+    "font_pt_from_glyph", "font_pt_fit_shape", "measure_text_in_shape",
+    "ink_inside_shape", "expected_glyph_h_px", "pad_ink_box_px",
+    "Image",
     "px_box_to_inches", "pct_to_px", "screenshot_mapping",
+    "inset_box", "center_in", "band", "label_above", "label_below", "text_in_box",
+    "caption_band_box",
 ]

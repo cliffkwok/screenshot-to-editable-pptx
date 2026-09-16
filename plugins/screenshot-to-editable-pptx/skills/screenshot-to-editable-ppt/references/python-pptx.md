@@ -48,14 +48,21 @@ Prefer Arial unless the screenshot clearly uses another installed face. Missing 
 
 ## Lines / connectors
 
-For diagram spines, attach connectors to shapes so they stay connected when a node is moved:
+Strokes are **connectors** (`add_line` / `connect_shapes`), never thin rectangles and never `RIGHT_ARROW` AutoShapes.
+
+- **Weight:** measure perpendicular ink thickness on the screenshot (`measure_stroke_px`) → `stroke_px_to_pt`. **Do not reuse one weight for every stroke.** A pill/capsule outline is often ~2.5 pt while the gray arrow connector is ~0.75–1 pt on the same slide. Measure outline and connector as separate roles.
+- **Arrowheads:** if the photo shows an arrow, set Format Shape → Line → End/Begin Arrow via `end_arrow="triangle"` (OOXML `tailEnd` / `headEnd`). Selecting the line in PowerPoint must show Line properties, not a filled chevron shape.
 
 ```python
-from helpers import connect_lr, connect_shapes, CXN_RIGHT, CXN_LEFT
-connect_lr(slide, node_a, node_b, "#262626", Pt(1.5))
-connect_shapes(slide, src, CXN_RIGHT, dst, CXN_LEFT, "#E66A60", Pt(1.2),
-               kind="curve", dash=MSO_LINE.DASH)
+from helpers import connect_lr, connect_shapes, add_line, CXN_RIGHT, CXN_LEFT, Pt
+connect_lr(slide, node_a, node_b, "#8A8A8A", Pt(0.75), end_arrow="triangle")
+# Parallel fan: smooth arcs, not elbow corners
+connect_shapes(slide, src, CXN_RIGHT, dst, CXN_LEFT, "#E8870A", Pt(1.0), kind="curve")
+add_line(slide, x1, y1, x2, y2, color="#8A8A8A", width=Pt(0.75),
+         end_arrow="triangle", arrow_size="sm")
 ```
+
+`kind`: `"straight"` | `"elbow"` | `"curve"`. Detect from the screenshot — sharp 90° bends → elbow; smooth S/C arcs (PowerPoint Curve / Curved Connector) → `curve`.
 
 Sites: 0 top, 1 left, 2 bottom, 3 right. Create both shapes first, then the connector. A free-floating line that only *looks* joined is not attached.
 
@@ -75,7 +82,9 @@ Collect the shapes that belong to one card, then:
 group_shapes(slide, card_shapes, name="Single")
 ```
 
-`group_shapes` writes local child `a:off` and `chOff=(0,0)` via XML. Never assign `.left` / `.top` on those shapes afterwards — PowerPoint will draw the group at the origin.
+`group_shapes` writes local child `a:off` and `chOff=(0,0)` via XML. Never assign `.left` / `.top` on those shapes afterwards — PowerPoint will draw the group at the origin. It returns the python-pptx `GroupShape` so connectors can attach to the group.
+
+**Composite icons:** capsule + two dots (or any shell + inner marks) must be one group — `add_pill_icon(...)` or `group_shapes([shell, *dots])`. Selecting the icon shows one bbox; leave connectors outside the group.
 
 ## Character highlights
 

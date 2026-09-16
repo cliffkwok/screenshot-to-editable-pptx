@@ -93,19 +93,34 @@ def fit(im: Image.Image, tw: int, th: int) -> Image.Image:
 
 
 def title_gold(im: Image.Image):
-    """Gold in the title band only; ignore kicker yellow and bottom squiggles."""
+    """Gold highlight behind a title substring — not header bars or diagram nodes.
+
+    Restrict to the title strip (above colored card headers). Yellow Parallel
+    headers and orange LLM fills otherwise false-positive as gold.
+    """
     w, h = im.size
-    y0, y1 = int(h * 0.12), int(h * 0.32)
+    y0, y1 = int(h * 0.04), int(h * 0.16)
     crop = im.crop((0, y0, w, y1))
     found = blobs(crop, is_gold, min_area=80)
     if not found:
         return None
-    # merge
+    found = [
+        b for b in found
+        if b["w"] < w * 0.22
+        and b["h"] < h * 0.08
+        and (b["x"] + b["w"] / 2) > w * 0.2
+        and (b["x"] + b["w"] / 2) < w * 0.8
+    ]
+    if not found:
+        return None
     x1 = min(b["x"] for b in found)
     y1b = min(b["y"] for b in found) + y0
     x2 = max(b["x"] + b["w"] for b in found)
     y2 = max(b["y"] + b["h"] for b in found) + y0
-    return {"x": x1, "y": y1b, "w": x2 - x1, "h": y2 - y1b}
+    merged_w = x2 - x1
+    if merged_w > w * 0.22:
+        return None
+    return {"x": x1, "y": y1b, "w": merged_w, "h": y2 - y1b}
 
 
 def is_header_green(rgb):

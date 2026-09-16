@@ -6,8 +6,17 @@ alwaysApply: false
 
 # Screenshot to editable PowerPoint
 
-When the user gives a screenshot (or Fit-to-Window capture) and wants a PowerPoint, follow the skill `screenshot-to-editable-ppt`.
+When the user gives a screenshot (or Fit-to-Window capture) and wants a PowerPoint, follow the skill `screenshot-to-editable-ppt` and **always** apply its `references/universal-measure-rule.md`.
+
+**Universal law:** measure **every** element against its neighbors (up/down/left/right). Nothing is placed by leftover space. If the user corrects one card/label, apply the same rule to **all** similar elements — do not wait to be told again. Always follow the skill’s `references/universal-measure-rule.md`.
 
 - Rebuild with **native shapes and text**. Do not paste the screenshot as a picture.
+- **Text inside a shape:** measure ink ↔ host edge (`measure_text_in_shape` / `pad_frac`); shape-native Edit Text; never fill the circle/bar with a guessed pt.
+- **Text near a shape:** measure gap to the node/segment; align to that anchor (Input/Output/Intermediate…).
+- **Caption / wrap:** measure pad to neighbors; **wrap only if the photo wraps** (single-line → `wrap=False`, width ≥ ink).
+- **Flow group:** group bbox vs surrounding card — include `pad_from_rule` (often > 0); do not glue fans to the divider or center leftover space.
+- **Dividers:** if they touch the card L/R in the photo, full card width.
+- **Composite icons:** capsule + two dots = one top-level group (`add_pill_icon`). Connectors stay outside.
+- **Lines:** measure stroke weight per role; straight / elbow / **curve** from photo; arrowheads are Line Begin/End Arrow, not AutoShapes.
 - Do not deliver until `source_audit.py`, `verify_pptx.py`, **and** `compare_render.py` all pass.
 - After ANY modification, rebuild and re-run all three gates.
