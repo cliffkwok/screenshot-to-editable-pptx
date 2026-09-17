@@ -6,6 +6,13 @@ When a line is promoted into `01`–`06`, mark `promoted: yes`.
 
 ---
 
+## 2026-09-17 · measure · nested children must fit parent before group
+
+- **Deck:** AI agent design patterns (Cooperative group)  
+- **Saw:** Selecting the Cooperative group showed piled Agents / Synthesizer / fan — workspace was 155px tall inside a 143px diagram nest.  
+- **Rule:** Parent-local layout + `assert_children_inside` before `group_shapes`. Never size a child larger than the nest box. Clamp label widen to parent.  
+- **promoted:** yes → [01-measure.md](01-measure.md) + `abs_in_parent` / `assert_children_inside`
+
 ## 2026-09-17 · measure · box-inside-box nest detector
 
 - **Deck:** AI agent design patterns (+ Eagle Master Layout batch)  

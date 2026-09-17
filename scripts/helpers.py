@@ -391,6 +391,47 @@ def caption_band_box(card_box, diagram_box, pad_top_px, pad_bot_px, side_pad_px=
     return (x, y, w, h)
 
 
+def abs_in_parent(parent_box, local_xywh):
+    """Convert parent-local (x,y,w,h) → absolute screenshot/slide px box."""
+    px, py, pw, ph = [float(v) for v in parent_box]
+    lx, ly, lw, lh = [float(v) for v in local_xywh]
+    return (px + lx, py + ly, lw, lh)
+
+
+def child_fits(parent_box, child_box, slack_px=2):
+    """True if child is inside parent (optional slack for AA / intentional overlap)."""
+    px, py, pw, ph = [float(v) for v in parent_box]
+    cx, cy, cw, ch = [float(v) for v in child_box]
+    return (
+        cx >= px - slack_px
+        and cy >= py - slack_px
+        and cx + cw <= px + pw + slack_px
+        and cy + ch <= py + ph + slack_px
+    )
+
+
+def assert_children_inside(parent_box, children, slack_px=2):
+    """Raise if any named child overflows the nested parent.
+
+    `children` is [{name, box_px}, ...]. Use after measuring layout and
+    BEFORE grouping — overflow inside a group is what PowerPoint shows as
+    piled / overlapping members when the group is selected.
+    """
+    bad = []
+    for ch in children:
+        box = ch.get("box_px") or ch.get("box")
+        name = ch.get("name") or ch.get("id") or "?"
+        if box is None:
+            continue
+        if not child_fits(parent_box, box, slack_px=slack_px):
+            bad.append(f"{name} box={list(map(int, box))} ⊄ parent={list(map(int, parent_box))}")
+    if bad:
+        raise ValueError(
+            "nested children overflow parent (fix layout / nest pads):\n  - "
+            + "\n  - ".join(bad)
+        )
+
+
 def add_flow_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
                   align="center", font="Arial", anchor="middle"):
     """One text-box placeholder: word wrap on, text flows to the next line.
@@ -654,4 +695,5 @@ __all__ = [
     "px_box_to_inches", "pct_to_px", "screenshot_mapping",
     "inset_box", "center_in", "band", "label_above", "label_below", "text_in_box",
     "caption_band_box",
+    "abs_in_parent", "child_fits", "assert_children_inside",
 ]

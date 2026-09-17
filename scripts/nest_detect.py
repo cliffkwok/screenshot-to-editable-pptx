@@ -315,11 +315,16 @@ def find_diagram(im, card_box, header_box, pred):
     if dT is None or dB is None or dB - dT < 40:
         ys = [body_top + i for i, n in enumerate(row_score) if n >= thr_r]
         if len(ys) < 2:
-            thr_r = max(6, int((dR - dL) * 0.12))
-            ys = [body_top + i for i, n in enumerate(row_score) if n >= thr_r]
+            thr_r2 = max(6, int((dR - dL) * 0.12))
+            ys = [body_top + i for i, n in enumerate(row_score) if n >= thr_r2]
         if len(ys) < 2:
             return None
         dT, dB = ys[0], ys[-1]
+
+    # Many decks: header bottom IS the diagram top (no separate top stroke).
+    # If detected top is far below header but L/R edges exist, snap to body_top.
+    if dT - body_top > max(12, (body_bot - body_top) * 0.12):
+        dT = body_top
 
     return box(dL, dT, dR + 1, dB + 1)
 

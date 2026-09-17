@@ -25,6 +25,17 @@
    Use `pads_in_parent` from the JSON — do not invent equal insets.
 6. Self-test rejects diagrams that are tiny inner widgets (`pad_L+pad_R` too large vs card width).
 
+## Nested group children (critical)
+
+When a card / diagram is grouped in PPT, **overflowing children look like piled / overlapping members** even if `group_shapes` used local `chOff=0`.
+
+1. Lay out every child in **parent-local** coords (`abs_in_parent(parent, local_xywh)`).
+2. Child size must fit the remaining parent space — never invent `h`/`w` larger than the nest box (classic fail: workspace taller than diagram).
+3. Call `assert_children_inside(parent_box, [{name, box_px}, …])` **before** `group_shapes`.
+4. Widening a label for one-line text must clamp to the parent right edge (`parent_box=`).
+5. Mesh / connector endpoints: use absolute px from the layout math, not `shape.left` after nesting groups.
+6. `group_shapes`: children local, `chOff=(0,0)` — never assign `.left/.top` after the node is inside `grpSp`.
+
 ## Pads (record on the photo)
 
 | Token | Meaning |
@@ -62,4 +73,4 @@ Use `caption_band_box(card, diagram, pad_top, pad_bot, side_pad)`. Never expand 
 
 ## Helpers
 
-`caption_band_box`, `inset_box`, `label_above` / `label_below` — `scripts/helpers.py`.
+`caption_band_box`, `inset_box`, `abs_in_parent`, `assert_children_inside`, `label_above` / `label_below` — `scripts/helpers.py`.
