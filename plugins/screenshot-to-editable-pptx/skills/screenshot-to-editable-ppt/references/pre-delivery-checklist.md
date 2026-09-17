@@ -12,6 +12,7 @@ Categories live in [rules/](rules/README.md). New corrections → [rules/LEARNIN
 - [ ] Each card/parent measured independently (no assumed equal gutters)
 - [ ] **Nest:** `python3 scripts/nest_detect.py --image … --self-test` PASS; diagram inset pads used
 - [ ] **Nested children:** `assert_children_inside(parent, …)` PASS before `group_shapes` (no child taller/wider than nest)
+- [ ] **Sibling gaps:** measured `h` + uniform `vgap`/`hgap`; widen stops before next sibling (`assert_min_gap`)
 - [ ] Flow-group `pad_L/R`, `pad_from_rule` / `pad_T`, `pad_B` (not leftover center)
 - [ ] Fans not glued to divider unless photo shows join
 - [ ] Captions via `caption_band_box` (pad to neighbors)
@@ -37,6 +38,7 @@ Categories live in [rules/](rules/README.md). New corrections → [rules/LEARNIN
 ### Lines / icons — [05-lines-icons.md](rules/05-lines-icons.md)
 - [ ] Stroke weight per role
 - [ ] Straight / elbow / curve from photo; Line arrows (not AutoShapes)
+- [ ] **Docking:** endpoints on edges (`point_on_edge`); fan-in staggered (`edge_attach_ts`) — no N→one mid pile-up
 - [ ] Composite icons = top-level groups; connectors outside
 
 If any box fails → fix, rebuild, re-check. Do not deliver a partial.

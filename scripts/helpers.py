@@ -432,6 +432,75 @@ def assert_children_inside(parent_box, children, slack_px=2):
         )
 
 
+def point_on_edge(box, side, t=0.5):
+    """Pixel point on a box edge. `t` in [0,1] along the edge (0=start).
+
+    sides: left / right / top / bottom. Used so connectors terminate ON the
+    stroke, not at a shared center that piles every spoke on one pixel.
+    """
+    x, y, w, h = [float(v) for v in box]
+    t = max(0.0, min(1.0, float(t)))
+    if side in ("left", "l"):
+        return (x, y + h * t)
+    if side in ("right", "r"):
+        return (x + w, y + h * t)
+    if side in ("top", "t"):
+        return (x + w * t, y)
+    if side in ("bottom", "b"):
+        return (x + w * t, y + h)
+    raise ValueError(f"unknown side {side!r}")
+
+
+def edge_attach_ts(n, margin=0.12):
+    """Evenly spaced `t` values along an edge for n fan-in/out spokes.
+
+    Avoids the classic defect where every connector ends at the mid-point
+    and the strokes look like one thick overlapping bundle.
+    """
+    n = int(n)
+    if n <= 0:
+        return []
+    if n == 1:
+        return [0.5]
+    lo, hi = float(margin), 1.0 - float(margin)
+    if n == 2:
+        return [lo, hi]
+    return [lo + (hi - lo) * i / (n - 1) for i in range(n)]
+
+
+def uniform_stack(y0, h, gap, n):
+    """n boxes of height h with constant gap — sibling rows from photo measure."""
+    return [float(y0) + i * (float(h) + float(gap)) for i in range(int(n))]
+
+
+def assert_min_gap(a_box, b_box, axis, min_px, name=""):
+    """Raise if two axis-aligned boxes are closer than min_px (or overlap)."""
+    ax, ay, aw, ah = [float(v) for v in a_box]
+    bx, by, bw, bh = [float(v) for v in b_box]
+    if axis == "x":
+        if ax + aw <= bx:
+            gap = bx - (ax + aw)
+        elif bx + bw <= ax:
+            gap = ax - (bx + bw)
+        else:
+            gap = -1.0
+    elif axis == "y":
+        if ay + ah <= by:
+            gap = by - (ay + ah)
+        elif by + bh <= ay:
+            gap = ay - (by + bh)
+        else:
+            gap = -1.0
+    else:
+        raise ValueError("axis must be 'x' or 'y'")
+    if gap < float(min_px):
+        tag = f" ({name})" if name else ""
+        raise ValueError(
+            f"gap too small{tag}: {gap:.1f}px < {min_px}px "
+            f"a={list(map(int, a_box))} b={list(map(int, b_box))}"
+        )
+
+
 def add_flow_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
                   align="center", font="Arial", anchor="middle"):
     """One text-box placeholder: word wrap on, text flows to the next line.
@@ -696,4 +765,5 @@ __all__ = [
     "inset_box", "center_in", "band", "label_above", "label_below", "text_in_box",
     "caption_band_box",
     "abs_in_parent", "child_fits", "assert_children_inside",
+    "point_on_edge", "edge_attach_ts", "uniform_stack", "assert_min_gap",
 ]

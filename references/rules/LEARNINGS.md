@@ -6,6 +6,13 @@ When a line is promoted into `01`–`06`, mark `promoted: yes`.
 
 ---
 
+## 2026-09-17 · measure+lines · sibling gaps + docked fan-in
+
+- **Deck:** AI agent design patterns (Competitive)  
+- **Saw:** Agent/solution gaps wrong; solution→Evaluator lines all met at one mid-point → overlapping bundle; Problem hub not at measured left mid.  
+- **Rule:** Measure `h`+`vgap`/`hgap` (`uniform_stack`/`assert_min_gap`); connectors use `point_on_edge`; fan-in uses `edge_attach_ts` — never N lines to one center. Auto compare→learn after every rebuild.  
+- **promoted:** yes → [01-measure.md](01-measure.md) + [05-lines-icons.md](05-lines-icons.md) + [06-delivery.md](06-delivery.md)
+
 ## 2026-09-17 · measure · nested children must fit parent before group
 
 - **Deck:** AI agent design patterns (Cooperative group)  

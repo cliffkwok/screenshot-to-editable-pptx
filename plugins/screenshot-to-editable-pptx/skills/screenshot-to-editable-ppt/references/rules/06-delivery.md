@@ -51,8 +51,15 @@ python3 scripts/compare_render.py --original work/.../original.png \
 - Fail on origin-stacked groups (`DOUBLE_OFFSET_BUG` symptom).
 
 
-1. You correct one thing → agent tags **category**.
-2. Append to [LEARNINGS.md](LEARNINGS.md).
-3. Promote the reusable line into `01`–`06`.
-4. Re-run checklist A + gates B on the current deck.
-5. Next screenshot already inherits the rule — you should not need to repeat it.
+## D. Auto compare → learn (standing order — no user prompt needed)
+
+After **every** rebuild (and whenever the user sends a crop / “this looks wrong” image):
+
+1. Export + `compare_render` → open `compare_side_by_side.png` (and the user crop if any).
+2. Diff **gaps, docking, wraps, colors** against the original — do not stop at “gates PASSED” if the side-by-side still shows pile-up, wrong pads, or floating lines.
+3. Fix the deck.
+4. Append [LEARNINGS.md](LEARNINGS.md) (`category:` + one-line rule).
+5. Promote into `01`–`06` if reusable.
+6. Re-run checklist A + gates B.
+
+The user should **not** have to say “encode this” or “make it universal.” That is the default loop.

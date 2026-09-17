@@ -25,6 +25,14 @@
    Use `pads_in_parent` from the JSON — do not invent equal insets.
 6. Self-test rejects diagrams that are tiny inner widgets (`pad_L+pad_R` too large vs card width).
 
+## Sibling gaps inside a nest
+
+Repeated rows / columns (agents, solution docs, …) use **measured** `h` + **uniform** `vgap` / `hgap` from the photo (`uniform_stack`). Do not invent taller boxes that compress the remaining rows.
+
+Widen-for-one-line must **stop before the next sibling** (`max_right=` / parent clamp). Eating the measured gap is how connectors look “glued” or overlapping.
+
+Helpers: `uniform_stack`, `assert_min_gap`.
+
 ## Nested group children (critical)
 
 When a card / diagram is grouped in PPT, **overflowing children look like piled / overlapping members** even if `group_shapes` used local `chOff=0`.
@@ -73,4 +81,4 @@ Use `caption_band_box(card, diagram, pad_top, pad_bot, side_pad)`. Never expand 
 
 ## Helpers
 
-`caption_band_box`, `inset_box`, `abs_in_parent`, `assert_children_inside`, `label_above` / `label_below` — `scripts/helpers.py`.
+`caption_band_box`, `inset_box`, `abs_in_parent`, `assert_children_inside`, `uniform_stack`, `assert_min_gap`, `point_on_edge`, `edge_attach_ts`, `label_above` / `label_below` — `scripts/helpers.py`.
