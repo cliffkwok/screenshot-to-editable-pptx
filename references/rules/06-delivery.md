@@ -62,4 +62,12 @@ After **every** rebuild (and whenever the user sends a crop / “this looks wron
 5. Promote into `01`–`06` if reusable.
 6. Re-run checklist A + gates B.
 
+When `nest_detect.py` changes (or the user says “Eagle / self-test”):
+
+```bash
+python3 scripts/eagle_batch_selftest.py
+```
+
+Require `fail=0`. SKIP is OK for non-card layouts. Fix FAILs before pushing.
+
 The user should **not** have to say “encode this” or “make it universal.” That is the default loop.

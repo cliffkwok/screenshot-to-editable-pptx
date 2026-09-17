@@ -24,6 +24,12 @@
 5. Run `scripts/nest_detect.py --image … --self-test` before placing children.  
    Use `pads_in_parent` from the JSON — do not invent equal insets.
 6. Self-test rejects diagrams that are tiny inner widgets (`pad_L+pad_R` too large vs card width).
+7. Diagram frames may be **tan/gray**, not the header hue — `find_diagram_best` tries header stroke then `is_frame_stroke`.
+8. Layouts without solid header bars (Pros/Cons, stroked containers) use `layout_kind=stroke_card`.
+9. Flow / marketing / UI shots with no nestable cards → **SKIP** (not FAIL).
+10. After changing `nest_detect.py`, run:
+    `python3 scripts/eagle_batch_selftest.py`  
+    (default: Eagle `Master Layout.library`). Expect `fail=0`.
 
 ## Sibling gaps inside a nest
 

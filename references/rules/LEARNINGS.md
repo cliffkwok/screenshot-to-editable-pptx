@@ -6,6 +6,13 @@ When a line is promoted into `01`–`06`, mark `promoted: yes`.
 
 ---
 
+## 2026-09-17 · measure · Eagle Master Layout nest batch
+
+- **Source:** Eagle `Master Layout.library` (15 screenshots) via `scripts/eagle_batch_selftest.py`  
+- **Saw:** 0/15 pass — detector only knew solid colored headers; diagram frames are often tan/gray; Pros/Cons are stroke cards; sparse diagram ink was merging into headers.  
+- **Rule:** `is_frame_stroke` + `diagram_score`; `stroke_card` fallback; header merge fill filter; SKIP non-nestable layouts. Run Eagle batch after nest_detect changes.  
+- **promoted:** yes → [01-measure.md](01-measure.md) + `eagle_batch_selftest.py`
+
 ## 2026-09-17 · measure+lines · sibling gaps + docked fan-in
 
 - **Deck:** AI agent design patterns (Competitive)  

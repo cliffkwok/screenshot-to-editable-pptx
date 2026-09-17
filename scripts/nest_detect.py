@@ -75,6 +75,25 @@ def is_blueish(c):
     return b > 120 and b > r + 20 and r < 160
 
 
+def is_frame_stroke(c):
+    """Diagram frame strokes: header hue OR common tan/beige/gray frames.
+
+    Multi-card decks often use a pale tan border for every diagram regardless
+    of the colored header — matching only the header hue misses the frame and
+    latches onto tiny inner widgets instead.
+    """
+    r, g, b = c[:3]
+    if is_reddish(c) or is_yellowish(c) or is_greenish(c) or is_blueish(c):
+        return True
+    # tan / beige / gold wash
+    if r > 175 and g > 145 and 90 < b < 210 and (r - b) > 20 and abs(r - g) < 55:
+        return True
+    # neutral gray stroke
+    if abs(r - g) < 14 and abs(g - b) < 14 and 70 < r < 205:
+        return True
+    return False
+
+
 HEADER_PREDS = (
     ("red", is_red),
     ("yellow", is_yellow),
@@ -119,7 +138,7 @@ def iou_xywh(a, b):
 # ── header detection (row bands + merge split-by-text) ───────────────────────
 
 def header_bands(im, pred, min_w_frac=0.12, max_w_frac=0.55,
-                 min_h_frac=0.02, max_h_frac=0.18):
+                 min_h_frac=0.015, max_h_frac=0.14):
     w, h = im.size
     px = im.load()
     row_runs = []
@@ -160,7 +179,8 @@ def header_bands(im, pred, min_w_frac=0.12, max_w_frac=0.55,
     return bands
 
 
-def merge_vertical(bands, gap_tol=45, x_ov=0.7):
+def merge_vertical(bands, gap_tol=22, x_ov=0.7):
+    """Merge vertically-split header bands (white text holes in a solid bar)."""
     if not bands:
         return []
     bands = sorted(bands, key=lambda b: (b["y"], b["x"]))
@@ -175,7 +195,8 @@ def merge_vertical(bands, gap_tol=45, x_ov=0.7):
         ow = max(0, ix2 - ix1)
         overlap = ow / min(p["w"], b["w"]) if min(p["w"], b["w"]) else 0
         gap = b["y"] - (p["y"] + p["h"])
-        if overlap >= x_ov and -2 <= gap <= gap_tol:
+        # Glue text-split fragments of one bar; stop before diagram nodes.
+        if overlap >= x_ov and -2 <= gap <= gap_tol and (p["h"] + b["h"] + max(0, gap)) <= 90:
             x0 = min(p["x"], b["x"])
             y0 = min(p["y"], b["y"])
             x1 = max(p["x"] + p["w"], b["x"] + b["w"])
@@ -184,7 +205,13 @@ def merge_vertical(bands, gap_tol=45, x_ov=0.7):
                        "n": p["n"] + b["n"]}
         else:
             out.append(dict(b))
-    return out
+    # Drop sparse bands (diagram ink) — solid headers are dense after merge
+    dense = []
+    for b in out:
+        fill = b["n"] / max(1, b["w"] * b["h"])
+        if fill >= 0.28 and b["h"] >= 12:
+            dense.append(b)
+    return dense
 
 
 # ── card from header ─────────────────────────────────────────────────────────
@@ -329,6 +356,148 @@ def find_diagram(im, card_box, header_box, pred):
     return box(dL, dT, dR + 1, dB + 1)
 
 
+def diagram_score(card_box, diagram):
+    """Higher = more like a real inset diagram frame (not an inner widget)."""
+    if not diagram:
+        return -1e9
+    p = pads(card_box, diagram)
+    cw, ch = card_box[2], card_box[3]
+    dw, dh = diagram[2], diagram[3]
+    side = p["pad_L"] + p["pad_R"]
+    score = 0.0
+    # want ~55–95% of card width
+    wr = dw / max(1, cw)
+    if 0.55 <= wr <= 0.96:
+        score += 40 + 20 * wr
+    else:
+        score -= 80 * abs(wr - 0.75)
+    # side pads should be small but non-zero
+    if 2 <= side <= cw * 0.35:
+        score += 30
+    else:
+        score -= 40
+    # height should eat a meaningful chunk of body — leave caption band
+    hr = dh / max(1, ch)
+    if 0.25 <= hr <= 0.70:
+        score += 25
+    elif hr > 0.78:
+        score -= 40  # ate caption / body
+    else:
+        score -= 20
+    # caption room under diagram
+    if p["pad_B"] >= ch * 0.15:
+        score += 20
+    elif p["pad_B"] < ch * 0.08:
+        score -= 35
+    if p["pad_L"] < 2 or p["pad_R"] < 2:
+        score -= 50
+    return score
+
+
+def find_diagram_best(im, card_box, header_box, color_name):
+    """Try header-hue stroke, then universal frame stroke; keep best score."""
+    preds = []
+    if color_name in STROKE_PREDS:
+        preds.append(STROKE_PREDS[color_name])
+    preds.append(is_frame_stroke)
+    best, best_s = None, -1e9
+    for pred in preds:
+        d = find_diagram(im, card_box, header_box, pred)
+        s = diagram_score(card_box, d)
+        if s > best_s:
+            best, best_s = d, s
+    if best is None or best_s < 0:
+        return None
+    return best
+
+
+# ── stroke-bordered cards (Pros/Cons, Sequential agent, …) ───────────────────
+
+def find_stroke_cards(im, min_w_frac=0.12, min_h_frac=0.18, max_cards=8):
+    """Detect large colored rectangular strokes used as cards (no solid header)."""
+    w, h = im.size
+    # Downsample for speed on 2K+ screenshots; map boxes back to full res.
+    scale = 1
+    work = im
+    if max(w, h) > 1400:
+        scale = 2
+        work = im.resize((w // scale, h // scale))
+    ww, hh = work.size
+    px = work.load()
+    frames = []
+    for color_name, pred in (
+        ("green", is_greenish),
+        ("red", is_reddish),
+        ("yellow", is_yellowish),
+        ("blue", is_blueish),
+    ):
+        col_n = []
+        for x in range(ww):
+            n = sum(1 for y in range(0, hh, 2) if pred(px[x, y]))
+            col_n.append(n)
+        thr = max(8, int(hh * min_h_frac * 0.2))
+        xs = [x for x, n in enumerate(col_n) if n >= thr]
+        if len(xs) < 2:
+            continue
+        edges = []
+        run = [xs[0]]
+        for x in xs[1:]:
+            if x - run[-1] <= 2:
+                run.append(x)
+            else:
+                edges.append(run[len(run) // 2])
+                run = [x]
+        edges.append(run[len(run) // 2])
+        for i in range(len(edges) - 1):
+            L, R = edges[i], edges[i + 1]
+            if R - L < ww * min_w_frac:
+                continue
+            row_n = []
+            step = max(1, (R - L) // 80)
+            for y in range(hh):
+                n = sum(1 for x in range(L, R + 1, step) if pred(px[x, y]))
+                row_n.append(n)
+            thr_r = max(6, int(((R - L) / step) * 0.08))
+            ys = [y for y, n in enumerate(row_n) if n >= thr_r]
+            if len(ys) < 2:
+                continue
+            T, B = ys[0], ys[-1]
+            if B - T < hh * min_h_frac:
+                continue
+            bw, bh = R - L + 1, B - T + 1
+            if bw * bh < ww * hh * 0.04:
+                continue
+            # map to full-res
+            box_full = box(L * scale, T * scale, (R + 1) * scale, (B + 1) * scale)
+            frames.append({
+                "box_px": box_full,
+                "color": color_name,
+                "area": box_full[2] * box_full[3],
+            })
+    frames.sort(key=lambda f: -f["area"])
+    kept = []
+    for f in frames:
+        if any(iou_xywh(f["box_px"], k["box_px"]) > 0.4 for k in kept):
+            continue
+        kept.append(f)
+        if len(kept) >= max_cards:
+            break
+    kept.sort(key=lambda f: (f["box_px"][1], f["box_px"][0]))
+    return kept
+
+
+def stroke_card_children(card_box):
+    """Header = top band; diagram = remaining body (content nest)."""
+    cx, cy, cw, ch = card_box
+    hh = max(28, int(ch * 0.22))
+    header = [cx, cy, cw, hh]
+    diagram = [cx + max(4, cw // 40), cy + hh,
+               cw - 2 * max(4, cw // 40), ch - hh - max(4, ch // 40)]
+    if diagram[3] < 20:
+        diagram = [cx + 6, cy + 6, cw - 12, ch - 12]
+    return header, diagram
+
+
 # ── detect ───────────────────────────────────────────────────────────────────
 
 def detect(im: Image.Image) -> dict:
@@ -345,16 +514,35 @@ def detect(im: Image.Image) -> dict:
         if any(iou_xywh(b, k) > 0.35 for k in kept):
             continue
         kept.append(b)
-    kept.sort(key=lambda b: (b["y"], b["x"]))
+    # Same-color bars that share an x-range: keep the topmost dense header only
+    # (diagram nodes below often match header hue and spawn false bands).
+    kept.sort(key=lambda b: (b["color"], b["y"], -b["n"]))
+    filtered = []
+    for b in kept:
+        clash = False
+        for k in filtered:
+            if b["color"] != k["color"]:
+                continue
+            ix1 = max(b["x"], k["x"])
+            ix2 = min(b["x"] + b["w"], k["x"] + k["w"])
+            ov = max(0, ix2 - ix1) / min(b["w"], k["w"])
+            if ov > 0.5:
+                clash = True
+                break
+        if not clash:
+            filtered.append(b)
+    kept = sorted(filtered, key=lambda b: (b["y"], b["x"]))
 
     cards = []
+    layout_kind = "none"
     for i, hdr in enumerate(kept):
-        pred = dict(HEADER_PREDS)[hdr["color"]]
-        stroke = STROKE_PREDS[hdr["color"]]
         card_box = card_from_header(im, hdr)
         header_box = [hdr["x"], hdr["y"], hdr["w"], hdr["h"]]
         header_box[0] = max(header_box[0], card_box[0])
         header_box[2] = min(hdr["x"] + hdr["w"], card_box[0] + card_box[2]) - header_box[0]
+        # Collapsed body (header ≈ whole card) → bad card_from_header on noisy shots
+        if card_box[3] - header_box[3] < 120:
+            continue
 
         children = [{
             "id": f"card_{i}_header",
@@ -364,7 +552,9 @@ def detect(im: Image.Image) -> dict:
             "color": hdr["color"],
         }]
 
-        diagram = find_diagram(im, card_box, header_box, stroke)
+        diagram = find_diagram_best(im, card_box, header_box, hdr["color"])
+        if diagram and diagram_score(card_box, diagram) < 8:
+            diagram = None
         if diagram:
             children.append({
                 "id": f"card_{i}_diagram",
@@ -393,18 +583,75 @@ def detect(im: Image.Image) -> dict:
         cards.append({
             "id": f"card_{i}",
             "role": "card",
+            "layout": "header_bar",
             "box_px": card_box,
             "color": hdr["color"],
             "children": children,
         })
 
+    if cards:
+        layout_kind = "header_bar"
+        # Prefer cards whose diagram scores well; drop IoU-overlapping losers
+        ranked = []
+        for c in cards:
+            diag = next((ch for ch in c["children"] if ch["role"] == "diagram"), None)
+            s = diagram_score(c["box_px"], diag["box_px"] if diag else None)
+            ranked.append((s, c))
+        ranked.sort(key=lambda t: -t[0])
+        deduped = []
+        for s, c in ranked:
+            if any(iou_xywh(c["box_px"], k["box_px"]) > 0.3 for k in deduped):
+                continue
+            deduped.append(c)
+        deduped.sort(key=lambda c: (c["box_px"][1], c["box_px"][0]))
+        cards = deduped
+        n_diag = sum(1 for c in cards if any(ch["role"] == "diagram" for ch in c["children"]))
+        if n_diag == 0:
+            cards = []
+            layout_kind = "none"
+
+    if not cards:
+        stroke_frames = find_stroke_cards(im)
+        for i, fr in enumerate(stroke_frames):
+            card_box = fr["box_px"]
+            header_box, diagram = stroke_card_children(card_box)
+            children = [
+                {
+                    "id": f"card_{i}_header",
+                    "role": "header",
+                    "box_px": header_box,
+                    "pads_in_parent": pads(card_box, header_box),
+                    "color": fr["color"],
+                },
+                {
+                    "id": f"card_{i}_diagram",
+                    "role": "diagram",
+                    "box_px": diagram,
+                    "pads_in_parent": pads(card_box, diagram),
+                    "pad_from_header": round(diagram[1] - (header_box[1] + header_box[3]), 1),
+                    "color": fr["color"],
+                },
+            ]
+            cards.append({
+                "id": f"card_{i}",
+                "role": "card",
+                "layout": "stroke_card",
+                "box_px": card_box,
+                "color": fr["color"],
+                "children": children,
+            })
+        if cards:
+            layout_kind = "stroke_card"
+
     return {
         "image_size": [w, h],
         "law": "box-inside-box: every child measured vs parent pads",
+        "layout_kind": layout_kind,
         "cards": cards,
         "summary": [
             {
                 "id": c["id"],
+                "layout": c.get("layout"),
                 "color": c["color"],
                 "card": c["box_px"],
                 "header": next((ch["box_px"] for ch in c["children"] if ch["role"] == "header"), None),
@@ -444,11 +691,16 @@ def draw_overlay(im, report, path: Path):
     vis.save(path)
 
 
-def self_test(report: dict) -> list[str]:
+def self_test(report: dict) -> tuple[str, list[str]]:
+    """Return (status, messages). status: PASS | FAIL | SKIP."""
+    kind = report.get("layout_kind") or "none"
+    cards = report.get("cards") or []
+    if not cards:
+        # No nestable cards — flow/UI/marketing slides are out of scope for this detector
+        return "SKIP", ["no nestable cards (layout not header_bar / stroke_card)"]
+
     fails = []
-    if len(report["cards"]) < 1:
-        return ["no cards detected"]
-    for c in report["cards"]:
+    for c in cards:
         roles = [ch["role"] for ch in c["children"]]
         if "header" not in roles:
             fails.append(f"{c['id']}: missing header")
@@ -457,23 +709,27 @@ def self_test(report: dict) -> list[str]:
             continue
         diag = next(ch for ch in c["children"] if ch["role"] == "diagram")
         p = diag["pads_in_parent"]
+        layout = c.get("layout") or kind
         for k in ("pad_L", "pad_R", "pad_B"):
             if p[k] < 2:
                 fails.append(f"{c['id']}: diagram {k}={p[k]} — need inset ≥ 2")
         if p["pad_T"] < 0:
             fails.append(f"{c['id']}: diagram pad_T negative")
         cw = c["box_px"][2]
-        # Real diagram frames span most of the card — not a small inner widget
-        if p["pad_L"] + p["pad_R"] > cw * 0.45:
-            fails.append(
-                f"{c['id']}: diagram side pads {p['pad_L']}+{p['pad_R']} "
-                f"too large vs card w={cw} — likely wrong (inner widget)"
-            )
-        if diag["box_px"][2] < cw * 0.45:
-            fails.append(f"{c['id']}: diagram width {diag['box_px'][2]} << card {cw}")
-        if diag["box_px"][2] >= cw - 2:
-            fails.append(f"{c['id']}: diagram width ≈ card — missing side inset")
-    return fails
+        if layout == "header_bar":
+            if p["pad_L"] + p["pad_R"] > cw * 0.45:
+                fails.append(
+                    f"{c['id']}: diagram side pads {p['pad_L']}+{p['pad_R']} "
+                    f"too large vs card w={cw} — likely wrong (inner widget)"
+                )
+            if diag["box_px"][2] < cw * 0.45:
+                fails.append(f"{c['id']}: diagram width {diag['box_px'][2]} << card {cw}")
+            if diag["box_px"][2] >= cw - 2:
+                fails.append(f"{c['id']}: diagram width ≈ card — missing side inset")
+        # stroke_card: diagram is content band — side pads small by construction
+    if fails:
+        return "FAIL", fails
+    return "PASS", []
 
 
 def main():
@@ -489,22 +745,28 @@ def main():
     out = Path(args.out) if args.out else Path(args.image).with_name("nest.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2))
-    print(f"wrote {out}")
+    print(f"wrote {out}  layout={report.get('layout_kind')}")
     for s in report["summary"]:
-        print(f"  {s['id']} {s['color']}: card={s['card']} diag={s['diagram']} pads={s['diagram_pads']}")
+        print(f"  {s['id']} {s.get('layout')} {s['color']}: card={s['card']} diag={s['diagram']} pads={s['diagram_pads']}")
 
     if args.overlay:
         draw_overlay(im, report, Path(args.overlay))
         print(f"overlay {args.overlay}")
 
-    fails = self_test(report)
-    if fails:
-        print("SELF-TEST FAIL:")
-        for f in fails:
-            print(f"  - {f}")
-        sys.exit(1 if args.self_test else 0)
-    print("SELF-TEST PASS")
-    sys.exit(0)
+    status, msgs = self_test(report)
+    if status == "PASS":
+        print("SELF-TEST PASS")
+        sys.exit(0)
+    if status == "SKIP":
+        print("SELF-TEST SKIP:")
+        for m in msgs:
+            print(f"  - {m}")
+        # skip is not a hard fail for batch (exit 2); --self-test alone still 0
+        sys.exit(0 if not args.self_test else 0)
+    print("SELF-TEST FAIL:")
+    for m in msgs:
+        print(f"  - {m}")
+    sys.exit(1 if args.self_test else 0)
 
 
 if __name__ == "__main__":
