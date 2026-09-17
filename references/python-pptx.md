@@ -24,7 +24,10 @@ card = add_shape(
     fill="#FFFFFF", line="#DDDDDD", lw=Pt(1), rad=0.04,
 )
 # add_shape already calls disable_shadow
-add_shadow(card, blur=35000, dist=5000, alpha=7000, base="AAAAAA")  # only if spec says so
+# Prefer panel fields when known (Transparency / Size / Blur / Angle / Distance):
+add_shadow(tile, blur_pt=11, dist_pt=4, transparency_pct=18,
+           size_pct=101, dir_angle=90, base="666666")
+# Legacy EMU kwargs still work: blur=, dist=, alpha=, base=
 ```
 
 Pill: `rad=0.5`. Circle: `MSO_SHAPE.OVAL` with equal width and height.

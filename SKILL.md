@@ -17,7 +17,7 @@ Verbatim delivery contract:
 
 Do **not** give the user a `.pptx` path, open the file, or say the work is done until:
 
-0. **[Pre-delivery checklist](references/pre-delivery-checklist.md)** — every **category** ticked (`measure` / `color` / `shape` / `text` / `lines` / `delivery`)
+0. **[Pre-delivery checklist](references/pre-delivery-checklist.md)** — every **category** ticked (`measure` / `color` / `shape` / `text` / `lines` / `layout` when layout-mode / `delivery`). **Text HARD:** text↔text `gap_px` recorded; stacked ORIGINAL|RENDER line-count match; never `wrap=True` on a photo one-liner.
 1. `source_audit.py` exits 0 — spec text boxes contain ink on the **original screenshot**, glyph height matches declared pt, boxes overlap measured lines
 2. `verify_pptx.py` exits 0 with `gates.shape`, `gates.font`, `gates.color` all true
 3. `compare_render.py` exits 0 — a **real PowerPoint slideshow raster** vs the original screenshot (card IoU, no origin-stacked groups, highlight not covering extra glyphs)
@@ -37,22 +37,32 @@ Corrections are filed by category so you only re-teach one slice:
 | `text` | [references/rules/04-text.md](references/rules/04-text.md) |
 | `lines` | [references/rules/05-lines-icons.md](references/rules/05-lines-icons.md) |
 | `delivery` | [references/rules/06-delivery.md](references/rules/06-delivery.md) |
+| `layout` | [references/rules/07-layout.md](references/rules/07-layout.md) |
+| `layers` | [references/rules/08-layers.md](references/rules/08-layers.md) |
+| `job` | [references/rules/09-job-workflow.md](references/rules/09-job-workflow.md) |
+| layout schema | [references/rules/layout-json.md](references/rules/layout-json.md) |
 | log | [references/rules/LEARNINGS.md](references/rules/LEARNINGS.md) |
 
-**When you correct something:** agent appends `LEARNINGS.md` with the category tag, promotes the reusable line into that category file, and re-runs the checklist. You should not need to repeat it on the next screenshot.
+**When you correct something:** agent appends `LEARNINGS.md` with the category tag, promotes the reusable **procedure** into that category file (and `universal-measure-rule.md`), and re-runs the checklist. You should not need to repeat it on the next screenshot — the agent re-measures; it does **not** reuse the previous deck’s pixel numbers.
 
 Pointer index (same law): [references/universal-measure-rule.md](references/universal-measure-rule.md).
 
-One-line law: **measure every element against its neighbors (up/down/left/right); never place by leftover space.**
+One-line law: **measure every element against its neighbors (up/down/left/right), including inside shapes; never place by leftover space or by copying another screenshot’s pads.**
+
+**Mode first:** infer **layout** vs **component** (or honor `layout`/`component`/`全页`/`组件`). Layout → [07-layout.md](references/rules/07-layout.md) brief then measure. Component → measure internals only.
+
+**Layers:** classify every element **A** / **B** / **C** ([08-layers.md](references/rules/08-layers.md)). Prefer native shapes; vectorize + **png-fallback** (PNG visible in PPT, SVG kept on disk); run **contact sheet** after Layer A crops. Optional **OCR** fills text strings only (`ocr_fill_text.py`). Assemble with **layout.json** + `build_pptx_from_layout.py`. Multi-page: `init_job.py` + **local repair**.
 
 Must-do when creating the slide (by category):
 
-1. **Measure / nest** → run `scripts/nest_detect.py --self-test`; place from `pads_in_parent` (card→header→diagram→caption).
-2. **Text** → ink↔shape pads; wrap from photo; mid-word wraps = defects (widen).
-3. **Shape** → correct primitive (ellipse→oval); 3D = back+front.
-4. **Color** → PIL sample + `color_probes`.
-5. **Lines** → stroke per role; Line arrows; top-level icon groups.
-6. **Delivery** → checklist + three gates before any path to you.
+1. **Mode** → layout or component.
+2. **Job** → `init_job.py` when multi-page / new conversion ([09-job-workflow.md](references/rules/09-job-workflow.md)).
+3. **Layers** → A/B/C inventory; Layer A crops → contact sheet; png-fallback.
+4. **Measure / nest** → pads, glyph→pt, strokes (never invent).
+5. **Optional OCR** → `ocr_fill_text.py` for Layer C strings (boxes already measured).
+6. **Assemble** → `build_pptx_from_layout.py` from [layout-json.md](references/rules/layout-json.md).
+7. **Text / shape / color / lines** → category rules 02–05.
+8. **Delivery** → checklist + three gates + ORIGINAL|RENDER; **local repair** only.
 
 When the user corrects one instance, **propagate to every similar element** and update the matching category file + `LEARNINGS.md`.
 
@@ -110,7 +120,8 @@ Copy this checklist and keep it updated:
 Vision, two passes:
 
 - Pass A: list every visible element, relative position %, z-order.
-- Pass B: per element — shape type, corner radius class, fill vs outline, shadow yes/no, text line count, font weight.
+- Pass B: per element — shape type, **corner class (sharp / slight / round — ask every rectangle)**, fill vs outline, shadow yes/no, text line count, font weight. Use `classify_rect_corner`; never default all boxes to rounded.
+- **Stacked markers:** if a blue/accent dot sits on a grey track with a vertical stem, run `detect_stacked_marker.py` and build with `add_crosshair_marker` (grey H + grey V + accent circle). Never one oval; never paint the stem accent-colored.
 
 Do not guess hex. Do not guess inches. Do not guess point size.
 
@@ -124,7 +135,11 @@ python3 scripts/pil_sampler.py \
   --out work/colors.json
 ```
 
-Sample the **center** of a solid fill, not the edge. If the sample is unexpectedly white, offset ±5px and retry. Put those hex values and pixel coords into `spec.json` `color_probes` so verify can re-sample the original.
+Sample the **center** of a solid fill, not the edge. For circles with a colored ring:
+sample **fill** at `r_frac < 0.5` (skip glyph), **stroke** at `r_frac ≈ 0.95–1.0`.
+Never use the bright ring color as fill. Glyph marks (✓ ✕ digits) get their **own** ink
+sample — do not assume white. Put those hex values and pixel coords into `spec.json`
+`color_probes` so verify can re-sample the original.
 
 ### 3. Measure (proportion chain)
 
@@ -203,7 +218,8 @@ Details: [references/python-pptx.md](references/python-pptx.md) and [references/
 
 Rules that caused past misses:
 
-- `disable_shadow(shape)` on every shape. Only call `add_shadow` when Pass B said yes.
+- `disable_shadow(shape)` on every shape. Only call `add_shadow` when Pass B / a shadow panel says yes.
+- When a Format → Shadow panel is available, map **all** fields: `blur_pt`, `dist_pt`, `transparency_pct`, `size_pct`, `dir_angle`, `base` (example soft tile: 11 / 4 / 18 / 101 / 90 / `#666666`).
 - Rounded rect `adjustments[0]`: 0.03–0.08 small, 0.15–0.25 large, **0.5 = pill**.
 - Circle = `OVAL` with width == height.
 - Diagram spines use `connect_lr` / `connect_shapes` / `add_line`. **Arrows are line properties** (`end_arrow="triangle"` → PowerPoint Line → End Arrow), never `RIGHT_ARROW` shapes. Measure stroke px → pt (`stroke_px_to_pt`). **Outline weight ≠ connector weight** — a pill/capsule outline is often 2–3× heavier than the gray arrow line; measure each role separately. **Connector shape:** detect straight vs elbow (sharp corners) vs **curve** (smooth arcs) from the photo — Parallel fan-in/out is usually `kind="curve"`, not elbow.
@@ -292,6 +308,8 @@ Keep `SKILL.md` as the map. Load supporting files only when the current step nee
 | `scripts/verify_pptx.py` | Shape / font / color gates | Before visual compare |
 | `scripts/export_slide_png.py` + `compare_render.py` | Real PPT raster vs photo | Before delivery |
 | `scripts/helpers.py` | Builders, groups, connectors | While building |
+| `scripts/detect_stacked_marker.py` | Grey H+V + accent circle roles | Slider / crosshair selected markers |
+| `scripts/nest_detect.py` | Card→header→diagram pads | Nested layout slides |
 | `references/spec-schema.md` | Spec field contract | When writing / editing `spec.json` |
 | `references/methodology.md` | Measurement detail + anti-patterns | When stuck on accuracy |
 | `references/python-pptx.md` | OOXML grouping / text gotchas | When grouping or text XML fails |

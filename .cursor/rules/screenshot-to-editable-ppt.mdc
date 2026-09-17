@@ -8,15 +8,34 @@ alwaysApply: false
 
 When the user gives a screenshot (or Fit-to-Window capture) and wants a PowerPoint, follow the skill `screenshot-to-editable-ppt` and **always** apply its `references/universal-measure-rule.md`.
 
-**Universal law:** measure **every** element against its neighbors (up/down/left/right). Nothing is placed by leftover space. If the user corrects one card/label, apply the same rule to **all** similar elements — do not wait to be told again. Always follow the skill’s `references/universal-measure-rule.md`.
+**Universal law:** On **every** new screenshot, measure **every** element against its neighbors (up/down/left/right), including inside shapes (badge→lines, icon→caption). Place only from those distances — never leftover space, never guessed parent-size fractions, never copied pads from a previous deck. If the user corrects one card/label, apply the same **procedure** to all similar elements. Always follow `references/universal-measure-rule.md`.
 
-- Rebuild with **native shapes and text**. Do not paste the screenshot as a picture.
+- **Mode first:** infer **layout** vs **component** (or honor `layout` / `component` / `全页` / `组件`). Layout → `references/rules/07-layout.md` brief then measure. Component → measure internals only.
+- **Layers A/B/C:** complex art = Layer A; contact sheet after crops; **png-fallback** (PNG in PPT, SVG on disk). Structure = B, text = C.
+- **Assemble:** prefer `layout.json` + `scripts/build_pptx_from_layout.py`. Multi-page: `init_job.py`. Failures: **local repair** only (`09-job-workflow.md`).
+- **Optional OCR:** `ocr_fill_text.py` fills strings onto measured boxes — does not invent pads/pt.
+- Rebuild with **native shapes and text**. Do not paste the full screenshot as a picture.
 - **Text inside a shape:** measure ink ↔ host edge (`measure_text_in_shape` / `pad_frac`); shape-native Edit Text; never fill the circle/bar with a guessed pt.
 - **Text near a shape:** measure gap to the node/segment; align to that anchor (Input/Output/Intermediate…).
 - **Caption / wrap:** measure pad to neighbors; **wrap only if the photo wraps** (single-line → `wrap=False`, width ≥ ink).
 - **Flow group:** group bbox vs surrounding card — include `pad_from_rule` (often > 0); do not glue fans to the divider or center leftover space.
 - **Dividers:** if they touch the card L/R in the photo, full card width.
 - **Composite icons:** capsule + two dots = one top-level group (`add_pill_icon`). Connectors stay outside.
-- **Lines:** measure stroke weight per role; straight / elbow / **curve** from photo; arrowheads are Line Begin/End Arrow, not AutoShapes.
-- Do not deliver until `source_audit.py`, `verify_pptx.py`, **and** `compare_render.py` all pass.
+- **Lines:** measure stroke weight per role; straight / elbow / **curve** from photo; arrowheads are Line Begin/End Arrow (`end_arrow` / `begin_arrow`), not AutoShapes. 1→N rounded fans → `fan_out_lines(kind="curve", end_arrow=…)`.
+- **Color:** measure **fill ≠ stroke ≠ glyph ink** separately (circle fill at interior `r_frac<0.5`). Never assume white/black marks or paint a bright ring as solid fill.
+- **Text size:** each label’s own cap-height → `font_pt_from_glyph`; never reuse another element’s pt.
+- **Text↔text gaps:** always measure distance between different text runs (title→subtitle, label→body, sentence→link). Place B from A.edge + gap_px. Inline sentence+link → one text frame with two runs.
+- **One-line in photo → `wrap=False`:** never `wrap=True` to squeeze width — wrapping invents lines and destroys measured vertical pads.
+- **Font weight:** measure bold vs regular per run — do not default bold (e.g. Back).
+- **Progress bars:** full grey **track** (back) + shorter **fill** (front) — two overlapping shapes.
+- **Overlay badges:** circle + host rect are two shapes; dock badge center to measured host edge.
+- **No full-slide white backing:** solid page color via `set_background` only.
+- **No guessing:** if fill/stroke/ink, pad, gap, pt, or corridor text position is unmeasured → **ask the user**, do not invent.
+- **Nested packs:** measure host + children; place via `pads_in_parent` / `nested_row_from_pads` (never guess padding). Host L/R from vertical dashed walls. Inner badge→lines measured (`line_y_fracs`), not body-height fractions. See `scripts/measure_nested_pack.py`.
+- **Every element vs neighbors:** after placing a parent, re-measure each child gap (badge→line0, icon→caption, …). Guessed fractions of parent size are forbidden.
+- Do not deliver until `source_audit.py`, `verify_pptx.py`, **and** `compare_render.py` all pass. Always show ORIGINAL|RENDER.
 - After ANY modification, rebuild and re-run all three gates.
+- **Arrow tips:** endpoint on target edge (`point_on_edge`); no air gap after export.
+- **Corridor text:** equal gaps between parallel lines → `text_in_corridor(..., equal_gaps=True)`.
+- **Nest labels:** ink-sized + `label_gap`; never `h=pad_B`.
+- **Color eyedropper:** exact 1×1 px via `scripts/eyedropper.py` (or user Colors panel Hex). Probe fill+stroke; never AA fringe / guess.

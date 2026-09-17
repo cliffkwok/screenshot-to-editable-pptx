@@ -123,16 +123,20 @@ def set_shape_text(
     tf.margin_right = m
     tf.margin_top = m
     tf.margin_bottom = m
-    p = tf.paragraphs[0]
-    p.alignment = ALIGN.get(align, PP_ALIGN.CENTER)
-    p.space_before = Pt(0)
-    p.space_after = Pt(0)
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(pt)
-    run.font.bold = bold
-    run.font.color.rgb = rgb(color) if isinstance(color, str) else color
-    run.font.name = font
+    lines = str(text).split("\n")
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        if i == 0:
+            p.clear()
+        p.alignment = ALIGN.get(align, PP_ALIGN.CENTER)
+        p.space_before = Pt(0)
+        p.space_after = Pt(0)
+        run = p.add_run()
+        run.text = line
+        run.font.size = Pt(pt)
+        run.font.bold = bold
+        run.font.color.rgb = rgb(color) if isinstance(color, str) else color
+        run.font.name = font
     shape._fit_font_pt = pt
     return shape
 
@@ -154,10 +158,24 @@ def add_shape_with_text(
     return sh
 
 
+_CONNECTOR_KIND = {
+    "straight": MSO_CONNECTOR.STRAIGHT,
+    "elbow": MSO_CONNECTOR.ELBOW,
+    "curve": MSO_CONNECTOR.CURVE,
+}
+
+
 def add_line(slide, x1, y1, x2, y2, color="#000000", width=Pt(1.5), dash=None,
-             begin_arrow=None, end_arrow=None, arrow_size="sm"):
-    """Real PPT connector line (not a thin rectangle or arrow AutoShape)."""
-    sh = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
+             begin_arrow=None, end_arrow=None, arrow_size="sm", kind="straight"):
+    """Real PPT **Line connector** (Format Shape → Line).
+
+    Always a connector — never a thin rectangle or Arrow AutoShape.
+    `kind`: straight | elbow | curve  (photo path → property).
+    `begin_arrow` / `end_arrow`: triangle | open | stealth | … (photo arrowheads
+    → Line Begin/End Arrow property). Both are first-class line properties.
+    """
+    conn = _CONNECTOR_KIND.get(kind, MSO_CONNECTOR.STRAIGHT)
+    sh = slide.shapes.add_connector(conn, x1, y1, x2, y2)
     sh.line.color.rgb = rgb(color) if isinstance(color, str) else color
     sh.line.width = width
     if dash is not None:
@@ -165,6 +183,34 @@ def add_line(slide, x1, y1, x2, y2, color="#000000", width=Pt(1.5), dash=None,
     set_line_arrows(sh, begin=begin_arrow, end=end_arrow, size=arrow_size)
     disable_shadow(sh)
     return sh
+
+
+def fan_out_lines(
+    slide, origin, targets, *, color="#000000", width=Pt(1.5),
+    kind="curve", mid_kind="straight", end_arrow="triangle", arrow_size="sm",
+    name_prefix="fan",
+):
+    """1→N connectors from one origin (x,y) to target points [(x,y), …].
+
+    Photo bracket fans (rounded elbows + arrow tips on each target): use
+    `kind=\"curve\"` (or `elbow`) and `end_arrow` on **every** spoke. The
+    middle spoke defaults to `mid_kind=\"straight\"` when targets are sorted
+    by y; pass `mid_kind=None` to use `kind` for all.
+    """
+    ox, oy = origin
+    ordered = sorted(enumerate(targets), key=lambda it: it[1][1])
+    mid_i = ordered[len(ordered) // 2][0] if ordered else -1
+    out = []
+    for i, (tx, ty) in enumerate(targets):
+        use = mid_kind if (mid_kind is not None and i == mid_i) else kind
+        sh = add_line(
+            slide, ox, oy, tx, ty,
+            color=color, width=width, kind=use,
+            end_arrow=end_arrow, arrow_size=arrow_size,
+        )
+        sh.name = f"{name_prefix}_{i}"
+        out.append(sh)
+    return out
 
 
 # OOXML arrowhead types shown in Format Shape → Line → Begin/End Arrow
@@ -210,6 +256,90 @@ def stroke_px_to_pt(stroke_px, img_h, slide_h_in=7.5):
     return max(0.5, round(float(stroke_px) / float(img_h) * float(slide_h_in) * 72.0, 2))
 
 
+def classify_rect_corner(im, box, stroke_fn=None, max_r=24):
+    """Ask every rectangle: sharp corner or round?
+
+    Inspect the top-left corner of `box`=(x,y,w,h) on the screenshot.
+
+    Returns dict:
+      class: "sharp" | "slight" | "round"
+      radius_px: estimated corner cut in pixels
+      rad: python-pptx ROUNDED_RECTANGLE adjustments[0] (0 for sharp → use RECTANGLE)
+      shape: MSO_SHAPE.RECTANGLE or MSO_SHAPE.ROUNDED_RECTANGLE
+
+    Rule: never default to rounded. Classify from the photo.
+    """
+    if Image is None:
+        raise RuntimeError("Pillow is required")
+    rgb = im.convert("RGB") if getattr(im, "mode", None) != "RGB" else im
+    px = rgb.load()
+    x, y, w, h = [int(v) for v in box]
+    W, H = rgb.size
+
+    def default_stroke(r, g, b):
+        # Generic non-white, non-near-white edge (works for gold/gray/black strokes)
+        L = (r + g + b) / 3.0
+        if L > 245:
+            return False
+        if abs(r - g) < 12 and abs(g - b) < 12 and L > 200:
+            return False  # soft fill
+        return L < 230
+
+    is_stroke = stroke_fn or default_stroke
+
+    def hit(xx, yy):
+        if not (0 <= xx < W and 0 <= yy < H):
+            return False
+        return bool(is_stroke(*px[xx, yy]))
+
+    corner_stroke = hit(x, y)
+    top_start = None
+    for dx in range(0, min(max_r + 5, w)):
+        if hit(x + dx, y):
+            top_start = dx
+            break
+    left_start = None
+    for dy in range(0, min(max_r + 5, h)):
+        if hit(x, y + dy):
+            left_start = dy
+            break
+    bg_cut = 0
+    for r in range(0, max_r):
+        if (not hit(x + r, y)) and (not hit(x, y + r)):
+            bg_cut = r + 1
+        else:
+            break
+
+    if corner_stroke and (top_start or 0) <= 1 and (left_start or 0) <= 1:
+        cls, radius_px = "sharp", 0
+    else:
+        radius_px = max(top_start or 0, left_start or 0, bg_cut)
+        if radius_px >= 8:
+            cls = "round"
+        elif radius_px >= 3:
+            cls = "slight"
+        else:
+            cls = "sharp"
+            radius_px = 0
+
+    if cls == "sharp":
+        return {
+            "class": "sharp",
+            "radius_px": 0,
+            "rad": 0.0,
+            "shape": MSO_SHAPE.RECTANGLE,
+        }
+    # Map px radius → adjustments[0] ≈ r / (min_side/2) style; clamp to useful range
+    adj = radius_px / max(1.0, min(w, h) / 2.0)
+    adj = max(0.02, min(0.5, round(adj, 3)))
+    return {
+        "class": cls,
+        "radius_px": radius_px,
+        "rad": adj,
+        "shape": MSO_SHAPE.ROUNDED_RECTANGLE,
+    }
+
+
 def measure_stroke_px(im, x, y, axis="v", dark=200, span=18):
     """Perpendicular run-length of dark ink at (x,y). axis='v' for a horizontal line."""
     if Image is None:
@@ -246,14 +376,61 @@ def measure_stroke_px(im, x, y, axis="v", dark=200, span=18):
     return best
 
 
+def add_crosshair_marker(
+    slide,
+    *,
+    cx_in,
+    track_y_in,
+    stem_top_in,
+    thumb_d_in,
+    track_color,
+    stem_color,
+    circle_color,
+    track_pt,
+    stem_pt,
+    add_track=False,
+    track_x0_in=None,
+    track_x1_in=None,
+    group_name="selected_marker",
+):
+    """Build a stacked slider/crosshair marker (universal composite).
+
+    Roles (z bottom→top):
+      1. grey horizontal track (optional here — often drawn once for the whole slider)
+      2. grey vertical stem
+      3. accent circle centered on the track
+
+    Stem color MUST match track grey family — never the circle accent.
+    Returns (group_or_shapes, thumb_shape).
+    """
+    shapes = []
+    if add_track:
+        if track_x0_in is None or track_x1_in is None:
+            raise ValueError("add_track requires track_x0_in / track_x1_in")
+        shapes.append(
+            add_line(
+                slide, track_x0_in, track_y_in, track_x1_in, track_y_in,
+                color=track_color, width=Pt(track_pt),
+            )
+        )
+    stem = add_line(
+        slide, cx_in, stem_top_in, cx_in, track_y_in,
+        color=stem_color, width=Pt(stem_pt),
+    )
+    r = float(thumb_d_in) / 2.0
+    thumb = add_shape(
+        slide, MSO_SHAPE.OVAL,
+        cx_in - r, track_y_in - r, thumb_d_in, thumb_d_in,
+        fill=circle_color, line=None,
+    )
+    thumb.name = "blue_thumb"
+    grp = group_shapes(slide, [stem, thumb], name=group_name)
+    return grp, thumb
+
+
 # Connection sites on a shape bounding box (python-pptx convention):
 # 0 = top, 1 = left, 2 = bottom, 3 = right
 CXN_TOP, CXN_LEFT, CXN_BOTTOM, CXN_RIGHT = 0, 1, 2, 3
-_CONNECTOR_KIND = {
-    "straight": MSO_CONNECTOR.STRAIGHT,
-    "elbow": MSO_CONNECTOR.ELBOW,
-    "curve": MSO_CONNECTOR.CURVE,
-}
 
 
 def connect_shapes(
@@ -337,6 +514,100 @@ def label_below(cx, cy, node_r, text_w, text_h, gap=6):
     return (cx - text_w / 2.0, cy + node_r + gap, text_w, text_h)
 
 
+def label_centered_on_box(parent_box, ink_w, ink_h, *, side="above", gap_px=8):
+    """Place a label centered on a parent box edge (title above a card, etc.).
+
+    Horizontal: parent_cx − ink_w/2 (always optically centered on the box).
+    Vertical: measured gap from the facing edge — never a guessed wider host box.
+    """
+    px, py, pw, ph = [float(v) for v in parent_box]
+    cx = px + pw / 2.0
+    x = cx - float(ink_w) / 2.0
+    if side in ("above", "top"):
+        y = py - float(gap_px) - float(ink_h)
+    elif side in ("below", "bottom"):
+        y = py + ph + float(gap_px)
+    else:
+        raise ValueError("side must be above/below")
+    return (round(x), round(y), round(float(ink_w)), round(float(ink_h)))
+
+
+def text_in_corridor(
+    bound_top=None,
+    bound_bottom=None,
+    bound_left=None,
+    bound_right=None,
+    *,
+    gap_above=None,
+    gap_below=None,
+    gap_left=None,
+    gap_right=None,
+    ink_w=None,
+    ink_h=None,
+    equal_gaps=False,
+):
+    """Place a text box from measured gaps to neighboring shapes/lines.
+
+    Use when text sits *between* connectors, rules, or container edges
+    (e.g. "Tool usage" between dual arrows, "Cost" between vertical arrows).
+
+    Pass the bounding edge coordinates (line y / x, or shape edge) and the
+    measured px gaps from the photo. Do **not** center in leftover space and
+    do **not** let the placeholder overlap a neighbor.
+
+    `equal_gaps=True`: ignore asymmetric measured side gaps and split the
+    free space evenly (user/photo intent = optically centered between lines).
+
+    Returns (x, y, w, h) in screenshot px.
+    """
+    if ink_w is None or ink_h is None:
+        raise ValueError("ink_w and ink_h required")
+    w, h = float(ink_w), float(ink_h)
+
+    if equal_gaps:
+        if None in (bound_left, bound_right, bound_top, bound_bottom):
+            raise ValueError("equal_gaps needs all four bounds")
+        span_x = float(bound_right) - float(bound_left)
+        span_y = float(bound_bottom) - float(bound_top)
+        if w > span_x - 2 or h > span_y - 2:
+            raise ValueError(
+                f"ink {w}x{h} does not fit corridor "
+                f"{span_x:.0f}x{span_y:.0f}"
+            )
+        x = float(bound_left) + (span_x - w) / 2.0
+        y = float(bound_top) + (span_y - h) / 2.0
+        return (round(x), round(y), round(w), round(h))
+
+    if bound_top is not None and gap_above is not None:
+        y = float(bound_top) + float(gap_above)
+    elif bound_bottom is not None and gap_below is not None:
+        y = float(bound_bottom) - float(gap_below) - h
+    else:
+        raise ValueError("need (bound_top,gap_above) or (bound_bottom,gap_below)")
+
+    if bound_left is not None and gap_left is not None:
+        x = float(bound_left) + float(gap_left)
+    elif bound_right is not None and gap_right is not None:
+        x = float(bound_right) - float(gap_right) - w
+    else:
+        raise ValueError("need (bound_left,gap_left) or (bound_right,gap_right)")
+
+    # Hard no-overlap: box must stay inside corridor
+    if bound_top is not None and y < float(bound_top) + 1:
+        raise ValueError(f"text overlaps top bound: y={y} top={bound_top}")
+    if bound_bottom is not None and y + h > float(bound_bottom) - 1:
+        raise ValueError(
+            f"text overlaps bottom bound: y+h={y+h} bottom={bound_bottom}"
+        )
+    if bound_left is not None and x < float(bound_left) + 1:
+        raise ValueError(f"text overlaps left bound: x={x} left={bound_left}")
+    if bound_right is not None and x + w > float(bound_right) - 1:
+        raise ValueError(
+            f"text overlaps right bound: x+w={x+w} right={bound_right}"
+        )
+    return (round(x), round(y), round(w), round(h))
+
+
 def add_line_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
                   align="left", font="Arial", anchor="middle"):
     """One visual line. wrap=False so PPT never wraps a measured glyph box."""
@@ -396,6 +667,138 @@ def abs_in_parent(parent_box, local_xywh):
     px, py, pw, ph = [float(v) for v in parent_box]
     lx, ly, lw, lh = [float(v) for v in local_xywh]
     return (px + lx, py + ly, lw, lh)
+
+
+def pads_in_parent(parent_box, child_box):
+    """Measured insets of child inside parent: pad_L/T/R/B in px.
+
+    Position children from these — never invent equal padding or center leftover space.
+    """
+    px, py, pw, ph = [float(v) for v in parent_box]
+    cx, cy, cw, ch = [float(v) for v in child_box]
+    return {
+        "pad_L": round(cx - px, 1),
+        "pad_T": round(cy - py, 1),
+        "pad_R": round((px + pw) - (cx + cw), 1),
+        "pad_B": round((py + ph) - (cy + ch), 1),
+    }
+
+
+def nested_row_from_pads(host_box, *, pad_L, pad_T, body_w, body_h, hgap, n):
+    """Rebuild n equal sibling boxes inside a host from measured pads + gap.
+
+    Formula (screenshot px):
+      body[i] = (host.x + pad_L + i*(body_w + hgap),
+                 host.y + pad_T,
+                 body_w, body_h)
+
+    Use after measuring host, first/last child pads, uniform body size, and
+    sibling hgap on the photo. Do not guess padding inside the dashed/stroked host.
+    """
+    hx, hy = float(host_box[0]), float(host_box[1])
+    bw, bh = float(body_w), float(body_h)
+    gap = float(hgap)
+    pl, pt = float(pad_L), float(pad_T)
+    return [
+        (round(hx + pl + i * (bw + gap)), round(hy + pt), round(bw), round(bh))
+        for i in range(int(n))
+    ]
+
+
+def badge_on_body_top(body_box, diameter, cx_frac=0.5):
+    """Overlay badge docked to body top edge (cy = body.top). Half outside.
+
+    Prefer badge_inside_body_top when the photo shows the circle fully inside.
+    """
+    bx, by, bw, _bh = [float(v) for v in body_box]
+    d = float(diameter)
+    cx = bx + bw * float(cx_frac)
+    return (cx - d / 2.0, by - d / 2.0, d, d)
+
+
+def badge_inside_body_top(body_box, diameter, pad_T=2.0, cx_frac=0.5):
+    """Badge fully inside body near top. pad_T = body.top → badge.top (px)."""
+    bx, by, bw, bh = [float(v) for v in body_box]
+    d = float(diameter)
+    pt = float(pad_T)
+    if pt + d > bh:
+        pt = max(0.0, bh - d)
+    cx = bx + bw * float(cx_frac)
+    return (cx - d / 2.0, by + pt, d, d)
+
+
+def measure_dashed_lines_under(px, body_box, below_y, *, expect_n=None, thr=140, min_runs=3, min_n=6):
+    """Find horizontal dashed content lines inside body_box below below_y.
+
+    Universal (any screenshot): count and y from the photo — never invent
+    fractions of parent height. Returns dict with line_ys, gaps, x fracs, or None.
+    """
+    bx, by, bw, bh = [int(v) for v in body_box]
+    y_lo = int(below_y) + 1
+    y_hi = by + bh - 2
+    hits = []
+    for y in range(y_lo, y_hi):
+        runs = n = 0
+        inrun = False
+        xs = []
+        for x in range(bx + 4, bx + bw - 4):
+            c = px[x, y]
+            v = c[0] >= thr and c[1] >= thr and c[2] >= thr
+            if v:
+                n += 1
+                xs.append(x)
+            if v and not inrun:
+                runs += 1
+                inrun = True
+            elif not v:
+                inrun = False
+        if runs >= min_runs and n >= min_n:
+            hits.append((y, n, runs, min(xs), max(xs)))
+    if not hits:
+        return None
+    clusters = [[hits[0]]]
+    for h in hits[1:]:
+        if h[0] - clusters[-1][-1][0] <= 2:
+            clusters[-1].append(h)
+        else:
+            clusters.append([h])
+    centers, x_spans = [], []
+    for c in clusters:
+        best = max(c, key=lambda t: t[1])
+        centers.append(best[0])
+        x_spans.append((best[3], best[4]))
+    if expect_n is not None:
+        centers = centers[: int(expect_n)]
+        x_spans = x_spans[: int(expect_n)]
+        if len(centers) < int(expect_n):
+            return None
+    gaps = [centers[i + 1] - centers[i] for i in range(len(centers) - 1)]
+    x0 = min(s[0] for s in x_spans)
+    x1 = max(s[1] for s in x_spans)
+    return {
+        "line_ys": centers,
+        "line_y_fracs": [round((y - by) / bh, 3) for y in centers],
+        "anchor_to_line0": round(centers[0] - float(below_y), 1),
+        "inter_line_gap": round(sum(gaps) / len(gaps), 1) if gaps else None,
+        "line_x0_frac": round((x0 - bx) / bw, 3),
+        "line_x1_frac": round((x1 - bx) / bw, 3),
+        "n_lines": len(centers),
+    }
+
+
+def lines_under_anchor(body_box, anchor_box, *, gap0, n, inter_gap, x0_frac=0.2, x1_frac=0.8):
+    """Place n horizontal line segments under an anchor from measured gaps.
+
+    y[0] = anchor.bottom + gap0; y[i] = y[0] + i * inter_gap.
+    Returns list of (x0, y, x1, y) in screenshot px.
+    """
+    bx, _by, bw, _bh = [float(v) for v in body_box]
+    anchor_bot = float(anchor_box[1]) + float(anchor_box[3])
+    x0 = bx + bw * float(x0_frac)
+    x1 = bx + bw * float(x1_frac)
+    y0 = anchor_bot + float(gap0)
+    step = float(inter_gap)
+    return [(x0, y0 + i * step, x1, y0 + i * step) for i in range(int(n))]
 
 
 def child_fits(parent_box, child_box, slack_px=2):
@@ -535,7 +938,8 @@ def add_text_from_hint(
 
 def add_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
              align="center", font="Arial", auto_fit=False, anchor="middle",
-             wrap=True):
+             wrap=True, margin_pt=0):
+    """Text box. Photo soft-wraps become separate paragraphs when `text` contains \\n."""
     tb = slide.shapes.add_textbox(l, t, w, h)
     tf = tb.text_frame
     tf.word_wrap = wrap
@@ -547,21 +951,54 @@ def add_text(slide, l, t, w, h, text, size_pt, bold=False, color="#1A1A1A",
         tf.vertical_anchor = MSO_ANCHOR.BOTTOM
     else:
         tf.vertical_anchor = MSO_ANCHOR.TOP
-    p = tf.paragraphs[0]
-    p.clear()
-    p.alignment = ALIGN.get(align, PP_ALIGN.CENTER)
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size_pt)
-    run.font.bold = bold
-    run.font.color.rgb = rgb(color)
-    run.font.name = font
+    m = Pt(margin_pt)
+    tf.margin_left = m
+    tf.margin_right = m
+    tf.margin_top = m
+    tf.margin_bottom = m
+
+    lines = str(text).split("\n")
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        if i == 0:
+            p.clear()
+        p.alignment = ALIGN.get(align, PP_ALIGN.CENTER)
+        p.space_before = Pt(0)
+        p.space_after = Pt(0)
+        run = p.add_run()
+        run.text = line
+        run.font.size = Pt(size_pt)
+        run.font.bold = bold
+        run.font.color.rgb = rgb(color)
+        run.font.name = font
     disable_shadow(tb)
     return tb
 
 
-def add_shadow(shape, blur=25000, dist=8000, alpha=8000, base="999999"):
-    """Apply outer shadow. Only when Vision marked the element as having one."""
+def add_shadow(shape, blur=25000, dist=8000, alpha=8000, base="999999",
+               dir_angle=90, blur_pt=None, dist_pt=None, transparency_pct=None,
+               size_pct=None):
+    """Apply outer shadow. Only when Vision / panel marked the element as having one.
+
+    OOXML uses EMUs (12700 = 1 pt) and alpha in thousandths of a percent
+    (100000 = fully opaque). Size uses sx/sy in 1000ths of a percent
+    (100000 = 100%).
+
+    Prefer the Google-Slides / PPT panel fields when known:
+      blur_pt, dist_pt, transparency_pct, size_pct, dir_angle
+      (e.g. blur 11, dist 4, transparency 18, size 101, angle 90 = down).
+    """
+    if blur_pt is not None:
+        blur = int(round(float(blur_pt) * 12700))
+    if dist_pt is not None:
+        dist = int(round(float(dist_pt) * 12700))
+    if transparency_pct is not None:
+        # transparency 18% → opacity 82% → alpha val 82000
+        opacity = max(0.0, min(100.0, 100.0 - float(transparency_pct)))
+        alpha = int(round(opacity * 1000))
+    # dir: 60000ths of a degree; 90° = straight down
+    dir_val = str(int(round(float(dir_angle) * 60000)) % 21600000)
+
     spPr = shape._element.find(qn("a:spPr"))
     if spPr is None:
         spPr = shape._element
@@ -571,14 +1008,20 @@ def add_shadow(shape, blur=25000, dist=8000, alpha=8000, base="999999"):
     existing = el.find(qn("a:outerShdw"))
     if existing is not None:
         el.remove(existing)
-    os = etree.SubElement(el, qn("a:outerShdw"), {
-        "blurRad": str(blur),
-        "dist": str(dist),
-        "dir": "5400000",
+    attrs = {
+        "blurRad": str(int(blur)),
+        "dist": str(int(dist)),
+        "dir": dir_val,
         "rotWithShape": "0",
-    })
-    sc = etree.SubElement(os, qn("a:srgbClr"), {"val": base})
-    etree.SubElement(sc, qn("a:alpha"), {"val": str(alpha)})
+    }
+    if size_pct is not None:
+        # Panel Size 101% → sx/sy = 101000
+        sx = str(int(round(float(size_pct) * 1000)))
+        attrs["sx"] = sx
+        attrs["sy"] = sx
+    os = etree.SubElement(el, qn("a:outerShdw"), attrs)
+    sc = etree.SubElement(os, qn("a:srgbClr"), {"val": base.replace("#", "").upper()})
+    etree.SubElement(sc, qn("a:alpha"), {"val": str(int(alpha))})
     return shape
 
 
@@ -753,8 +1196,9 @@ __all__ = [
     "MSO_SHAPE", "Inches", "Pt", "Emu", "PP_ALIGN", "MSO_ANCHOR", "MSO_AUTO_SIZE",
     "rgb", "new_presentation", "set_background", "disable_shadow",
     "add_shape", "add_shape_with_text", "set_shape_text", "add_text", "add_flow_text",
-    "add_line", "add_line_text", "add_text_from_hint",
+    "add_line", "add_line_text", "add_text_from_hint", "fan_out_lines",
     "connect_shapes", "connect_lr", "set_line_arrows", "stroke_px_to_pt", "measure_stroke_px",
+    "classify_rect_corner", "add_crosshair_marker",
     "CXN_TOP", "CXN_LEFT", "CXN_BOTTOM", "CXN_RIGHT",
     "add_shadow", "add_pill_icon",
     "inch_pct", "group_shapes", "cjk_em_in", "cjk_centered_substring_box",

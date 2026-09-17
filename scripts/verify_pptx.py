@@ -187,6 +187,11 @@ def find_filled_sibling(inspected, seed, expected_hex=None):
 
 def resolve_probe_target(inspected, probe):
     apply_on = probe.get("apply", "fill")
+    # Solid page color lives on slide.background — never require a full-slide shape.
+    if apply_on in ("slide_background", "background") or probe.get("element") in (
+        "slide_bg", "bg", "background",
+    ):
+        return {"fill": (inspected.get("slide") or {}).get("background")}, "fill"
     expected = probe.get("hex")
     target = None
     if probe.get("element"):
@@ -235,7 +240,7 @@ def check_color(spec, inspected, original: Path | None, gate):
             fail(gate, name, "color probe missing hex")
             continue
 
-        if original and probe.get("px"):
+        if original and probe.get("px") and probe.get("source") != "panel":
             sampled, err = sample_original(original, probe["px"])
             if err:
                 fail(gate, name, f"cannot re-sample original: {err}", px=probe["px"])
@@ -246,6 +251,7 @@ def check_color(spec, inspected, original: Path | None, gate):
                          "spec hex does not match original screenshot (guessed color?)",
                          expected=expected, sampled_from_original=sampled,
                          delta=d, px=probe["px"])
+        # source=panel → hex comes from Color Picker / RGB Sliders; skip PIL AA check
 
         target, apply_on = resolve_probe_target(inspected, probe)
         if target is None:

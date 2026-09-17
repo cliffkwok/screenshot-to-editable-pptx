@@ -30,6 +30,22 @@ Default is **no shadow**. python-pptx adds one unless `disable_shadow(shape)` ru
 
 Only call `add_shadow` when Pass B said that element has a shadow.
 
+When a shadow **property panel** is available (PPT / Slides Format → Shadow), map every field:
+
+| Panel | `add_shadow` kwarg | OOXML |
+|-------|--------------------|-------|
+| Transparency % | `transparency_pct` | `a:alpha` = (100 − T) × 1000 |
+| Size % | `size_pct` | `sx` / `sy` = Size × 1000 |
+| Blur pt | `blur_pt` | `blurRad` = pt × 12700 |
+| Angle ° | `dir_angle` | `dir` = ° × 60000 |
+| Distance pt | `dist_pt` | `dist` = pt × 12700 |
+| Color | `base` | `a:srgbClr` |
+
+Example soft icon tile: Transparency 18%, Size 101%, Blur 11 pt, Angle 90°, Distance 4 pt →
+`add_shadow(..., blur_pt=11, dist_pt=4, transparency_pct=18, size_pct=101, dir_angle=90)`.
+
+Fallback heuristics when no panel:
+
 | Background | blurRad | dist | alpha | base |
 |------------|---------|------|-------|------|
 | Dark `#141414` | 80000 | 0 | 50000 | `000000` |
@@ -120,7 +136,7 @@ Ink-tight glyph boxes still drive **font size**. Container insets drive **where 
 
 ## 7. Build order
 
-1. Slide background
+1. Slide background via `set_background` only (no full-slide backing shape)
 2. Frame / cards
 3. Diagrams, icons
 4. Text

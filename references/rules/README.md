@@ -10,6 +10,10 @@
 | **Text** | [04-text.md](04-text.md) | Wrap-from-photo; mid-word wraps = defects |
 | **Lines / icons** | [05-lines-icons.md](05-lines-icons.md) | Stroke role, arrows, top-level groups |
 | **Delivery** | [06-delivery.md](06-delivery.md) | Checklist + three automated gates |
+| **Layout** | [07-layout.md](07-layout.md) | Balance, hierarchy, focal point, grid/whitespace (layout mode) |
+| **Layers** | [08-layers.md](08-layers.md) | A/B/C + png-fallback + contact sheet |
+| **Job workflow** | [09-job-workflow.md](09-job-workflow.md) | Per-page dirs, local repair, finalize |
+| **Layout JSON** | [layout-json.md](layout-json.md) | Assemble contract for `build_pptx_from_layout.py` |
 
 **Learning log:** every new correction is appended to [LEARNINGS.md](LEARNINGS.md) with `category:` + one-line rule. That line is then promoted into the matching category file if it is reusable.
 

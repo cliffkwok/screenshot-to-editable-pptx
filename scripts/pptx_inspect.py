@@ -238,7 +238,8 @@ def record_shape(shape, slide_w, slide_h, group_path="", ox=0, oy=0):
         "font": font_info(shape),
     }
     if rec["kind"] == "shape" and rec["shape_type"] == "OVAL":
-        rec["is_circle"] = abs(width - height) / max(width, height) < 0.05
+        denom = max(width, height, 1)
+        rec["is_circle"] = abs(width - height) / denom < 0.05
     return rec
 
 

@@ -7,7 +7,12 @@
 
 > Measure every element against its neighbors (up / down / left / right).  
 > Position = f(those distances).  
-> **Nothing** is placed by leftover space, eyeballing, or “center in the remaining box.”
+> **Nothing** is placed by leftover space, eyeballing, or “center in the remaining box.”  
+> **Text size is measured too** — each label’s own cap-height → `font_pt_from_glyph` (see [04-text.md](04-text.md)). Do not reuse another element’s pt.  
+> **Text↔text gaps are measured too** — every pair of neighboring text runs (stacked or inline) gets its own `gap_px` from ink boxes. See [04-text.md](04-text.md).  
+> **Overlay badges** (circle on rect corner): measure badge center vs host top/right edges; two shapes, docked — never merge into one.  
+> **No guessing:** if a pad / color / gap / pt cannot be read from the screenshot, **ask** — do not invent.  
+> **Re-measure every element vs neighbors** — not only nest host pads. Inside a shape (badge → dashed lines, icon → caption, title → rule) each gap is its own measurement. Guessed fractions of parent `h`/`w` are forbidden.
 
 ## Containers (box-inside-box)
 
@@ -33,11 +38,37 @@
 
 ## Sibling gaps inside a nest
 
-Repeated rows / columns (agents, solution docs, …) use **measured** `h` + **uniform** `vgap` / `hgap` from the photo (`uniform_stack`). Do not invent taller boxes that compress the remaining rows.
+Repeated rows / columns (agents, solution docs, …) use **measured** `h` + **uniform** `vgap` / `hgap` from the photo (`uniform_stack` / `nested_row_from_pads`). Do not invent taller boxes that compress the remaining rows.
 
 Widen-for-one-line must **stop before the next sibling** (`max_right=` / parent clamp). Eating the measured gap is how connectors look “glued” or overlapping.
 
-Helpers: `uniform_stack`, `assert_min_gap`.
+### Nested row pack (dashed host + N equal children)
+
+Do **not** guess padding inside a stroked/dashed host:
+
+1. Measure **child bodies** first (vertical stroke runs; AA thr often ~170).
+2. Measure **host top/bottom** from horizontal dashed envelopes; bottom = last wide span **below labels** (labels belong inside the host).
+3. Measure **host L/R** from **vertical dashed columns** outside the body cluster — **not** from the top horizontal span’s min/max x (rounded corners clip that span inward and fake `pad_L/R ≈ 0–2` when the eye sees ~15–20px).
+4. Record `pad_L/T/R/B` via `pads_in_parent`, plus uniform `body_w` / `body_h` / `hgap`.
+5. Place with `nested_row_from_pads` — rebuild err must be ≤ 2px vs measured bodies.
+6. Overlay badges: if the circle sits **fully inside** the body, use `badge_inside_body_top` + measured `badge_pad_T`. Only use `badge_on_body_top` when the photo docks the badge on the top edge.
+7. **Inner content under badge** (dashed “text” lines, glyphs, …): measure `badge_to_line0` and each line’s `y` (or `line_y_fracs`) — never invent `(0.38, 0.52, …)` of body height. Count lines from the photo (here: **3**, not 4).
+8. **Labels under children:** ink-sized placeholder + measured `label_gap` from body bottom — **never** set label `h = pad_B` (stretches text into the bottom border and leaves empty top).
+9. `assert_children_inside(host, children)` before grouping.
+10. Also record pads vs **full content** (badge top → label bottom); `pad_T`/`pad_B` to content should match the photo (±2px).
+
+Tool: `scripts/measure_nested_pack.py --image … --region x0,y0,x1,y1 --overlay nest.png`.
+
+## Overlay badges (circle on rect)
+
+Two shapes, not one merged control:
+
+1. Measure **host** box and **badge** box independently.
+2. Record `badge_cy - host_top` and `host_right - badge_cx` (or left). Typical: `cy ≈ host_top` (bisected by the top edge) **or** fully inside with `badge_pad_T > 0`.
+3. Place badge from those distances; draw **host first**, badge **on top** (z-order).
+4. Diameter ≈ measured badge ink; do not scale off host width by guess.
+
+Helpers: `uniform_stack`, `assert_min_gap`, `pads_in_parent`, `nested_row_from_pads`, `badge_inside_body_top`, `badge_on_body_top`.
 
 ## Nested group children (critical)
 
@@ -87,4 +118,5 @@ Use `caption_band_box(card, diagram, pad_top, pad_bot, side_pad)`. Never expand 
 
 ## Helpers
 
-`caption_band_box`, `inset_box`, `abs_in_parent`, `assert_children_inside`, `uniform_stack`, `assert_min_gap`, `point_on_edge`, `edge_attach_ts`, `label_above` / `label_below` — `scripts/helpers.py`.
+`caption_band_box`, `inset_box`, `abs_in_parent`, `pads_in_parent`, `nested_row_from_pads`, `badge_on_body_top`, `assert_children_inside`, `uniform_stack`, `assert_min_gap`, `point_on_edge`, `edge_attach_ts`, `label_above` / `label_below` — `scripts/helpers.py`.  
+Nested pack detector: `scripts/measure_nested_pack.py`.
