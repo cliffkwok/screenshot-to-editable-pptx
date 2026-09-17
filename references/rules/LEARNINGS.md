@@ -6,6 +6,13 @@ When a line is promoted into `01`–`06`, mark `promoted: yes`.
 
 ---
 
+## 2026-09-17 · measure · box-inside-box nest detector
+
+- **Deck:** AI agent design patterns (+ Eagle Master Layout batch)  
+- **Saw:** Card contains header + inset diagram frame + caption; rebuilds ignored inset pads  
+- **Rule:** Detect nest with `scripts/nest_detect.py`; place from `pads_in_parent`. Diagram must span most of card width (reject widget false-positives). Pale gold frames need loose stroke preds.  
+- **promoted:** yes → [01-measure.md](01-measure.md) + `scripts/nest_detect.py`
+
 ## 2026-09-16 · text · mid-word wraps are defects
 
 - **Deck:** AI agent design patterns  

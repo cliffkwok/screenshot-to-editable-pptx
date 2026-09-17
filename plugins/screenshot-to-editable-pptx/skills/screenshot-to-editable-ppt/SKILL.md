@@ -47,8 +47,8 @@ One-line law: **measure every element against its neighbors (up/down/left/right)
 
 Must-do when creating the slide (by category):
 
-1. **Text** → ink↔shape pads; wrap from photo; mid-word wraps = defects (widen).
-2. **Measure** → flow-group pads incl. `pad_from_rule`; captions via `caption_band_box`.
+1. **Measure / nest** → run `scripts/nest_detect.py --self-test`; place from `pads_in_parent` (card→header→diagram→caption).
+2. **Text** → ink↔shape pads; wrap from photo; mid-word wraps = defects (widen).
 3. **Shape** → correct primitive (ellipse→oval); 3D = back+front.
 4. **Color** → PIL sample + `color_probes`.
 5. **Lines** → stroke per role; Line arrows; top-level icon groups.

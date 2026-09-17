@@ -9,11 +9,21 @@
 > Position = f(those distances).  
 > **Nothing** is placed by leftover space, eyeballing, or “center in the remaining box.”
 
-## Containers
+## Containers (box-inside-box)
 
 1. Measure each parent box (`x,y,w,h` in source px) **independently**.
 2. Sibling cards may differ in width / height / gutter — do not assume equality.
 3. Children are relative to that parent — never absolute slide guesses.
+4. **Nest hierarchy** (typical slide card):
+   ```
+   card
+     ├─ header   (often flush top / full card width)
+     ├─ diagram  (INNER stroked rect — inset → pad_L/R/T/B > 0)
+     └─ caption  (band under diagram)
+   ```
+5. Run `scripts/nest_detect.py --image … --self-test` before placing children.  
+   Use `pads_in_parent` from the JSON — do not invent equal insets.
+6. Self-test rejects diagrams that are tiny inner widgets (`pad_L+pad_R` too large vs card width).
 
 ## Pads (record on the photo)
 

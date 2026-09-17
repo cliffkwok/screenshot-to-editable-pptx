@@ -10,6 +10,7 @@ Categories live in [rules/](rules/README.md). New corrections → [rules/LEARNIN
 
 ### Measure — [01-measure.md](rules/01-measure.md)
 - [ ] Each card/parent measured independently (no assumed equal gutters)
+- [ ] **Nest:** `python3 scripts/nest_detect.py --image … --self-test` PASS; diagram inset pads used
 - [ ] Flow-group `pad_L/R`, `pad_from_rule` / `pad_T`, `pad_B` (not leftover center)
 - [ ] Fans not glued to divider unless photo shows join
 - [ ] Captions via `caption_band_box` (pad to neighbors)
