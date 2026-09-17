@@ -36,7 +36,9 @@ python3 scripts/compare_render.py --original work/.../original.png \
 |------|--------|
 | `source_audit` | Spec boxes hit real ink on the **photo** |
 | `verify_pptx` | Shape / font / color match spec (+ probes) |
-| `compare_render` | Real PowerPoint raster vs photo (cards, no origin stack) |
+| `compare_render` | Real PowerPoint raster vs photo (cards **or** centered MAE) |
+
+Centered / marketing UIs with no cream header cards: `compare_render` passes when **both** sides have 0 cards and pixel MAE ≤ 55 (see `layout_model: centered_composition`).
 
 ## C. Delivery statement
 

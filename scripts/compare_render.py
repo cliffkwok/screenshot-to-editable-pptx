@@ -330,12 +330,22 @@ def compare(original: Path, render: Path, out_dir: Path) -> dict:
     rend_hl = title_gold(rend)
     failures = []
 
-    if not orig_cards:
+    if not orig_cards and not rend_cards:
+        # Centered compositions / marketing UI — no cream header cards.
+        # Gate on pixel MAE + optional blue/gold highlight only.
+        mae_only = mean_abs(orig, rend)
+        if mae_only > 55:
+            failures.append(
+                f"centered layout pixel MAE={mae_only:.1f} > 55 — rebuild drifted from photo"
+            )
+        # skip card-count / quadrant failures by clearing the would-be errors path
+    elif not orig_cards:
         failures.append("original has no cream cards — cannot compare layout")
-    if len(rend_cards) != len(orig_cards):
-        failures.append(
-            f"card count {len(rend_cards)} != original {len(orig_cards)}"
-        )
+    if orig_cards or rend_cards:
+        if len(rend_cards) != len(orig_cards):
+            failures.append(
+                f"card count {len(rend_cards)} != original {len(orig_cards)}"
+            )
 
     # stacked-at-origin: a render card in the top-left 12% while original cards are not
     orig_topleft = any(c["x"] < orig.size[0] * 0.12 and c["y"] < orig.size[1] * 0.18

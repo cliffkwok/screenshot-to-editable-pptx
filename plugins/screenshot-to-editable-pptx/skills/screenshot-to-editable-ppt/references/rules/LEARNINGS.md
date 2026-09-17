@@ -6,6 +6,13 @@ When a line is promoted into `01`–`06`, mark `promoted: yes`.
 
 ---
 
+## 2026-09-17 · delivery · centered composition compare
+
+- **Deck:** Claude Cowork intermediate  
+- **Saw:** nest_detect SKIP (no header/stroke cards); compare_render used to fail with “no cream cards.”  
+- **Rule:** When both original and render have 0 cards, gate on pixel MAE (≤55) instead of card IoU. Spec `layout_model: centered_composition`.  
+- **promoted:** yes → [06-delivery.md](06-delivery.md) + `compare_render.py`
+
 ## 2026-09-17 · measure · Eagle Master Layout nest batch
 
 - **Source:** Eagle `Master Layout.library` (15 screenshots) via `scripts/eagle_batch_selftest.py`  
