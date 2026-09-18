@@ -36,6 +36,9 @@ This skill rebuilds the slide with **object-level PowerPoint shapes** and refuse
 | **No full-slide white backing** | Page color via `set_background` only — no selectable full-slide rect |
 | **Progress = track + fill** | Grey track (back) + black/accent fill (front) — two overlapping layers |
 | **Pre-delivery checklist** | Category HARD gates before the three automated scripts ([pre-delivery-checklist.md](references/pre-delivery-checklist.md)) |
+| **Text fidelity gate** | `check_text_fidelity.py` — gaps, line-count, bold/regular vs photo |
+| **ROI compare** | `compare_rois.py` — per-region MAE (header / title / cards / footer) |
+| **Progress detector** | `detect_progress_bar.py` — track (back) + fill (front) |
 
 Law in one line: **measure every element against its neighbors — including text↔text and layers inside a shape. Never guess. Never copy pads from another screenshot.**
 

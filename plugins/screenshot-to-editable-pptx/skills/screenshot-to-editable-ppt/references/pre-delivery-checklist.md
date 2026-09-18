@@ -87,11 +87,23 @@ python3 scripts/export_slide_png.py --pptx <out.pptx> --out work/.../render.png
 
 python3 scripts/compare_render.py --original work/.../original.png \
   --render work/.../render.png --out work/.../compare
+
+# Accuracy enrichments (fail-closed — do not skip)
+python3 scripts/check_text_fidelity.py \
+  --original work/.../original.png --render work/.../render.png \
+  --fidelity work/.../text_fidelity.json --pptx <out.pptx> \
+  --out work/.../text_fidelity_report.json
+
+python3 scripts/compare_rois.py \
+  --original work/.../original.png --render work/.../render.png \
+  --rois work/.../rois.json --out work/.../roi_report.json
 ```
 
 - [ ] `source_audit` PASSED  
 - [ ] `verify_pptx` PASSED (shape / font / color)  
 - [ ] `compare_render` PASSED  
+- [ ] `check_text_fidelity` PASSED (gaps / line-count / weight)  
+- [ ] `compare_rois` PASSED (regional MAE)  
 
 ---
 

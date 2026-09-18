@@ -1,5 +1,13 @@
 # Changelog highlights
 
+## 2026-09-17 — Accuracy gates (text fidelity + ROI)
+
+- `scripts/check_text_fidelity.py` — fail if text↔text gaps collapse, one-liners wrap, or bold mismatches
+- `scripts/compare_rois.py` — regional MAE so global MAE cannot hide local drift
+- `scripts/detect_progress_bar.py` — grey track (back) + black fill (front)
+- `mapping.font_pt_from_cap_height` + `one_line_box_width` — stop descender-inflated pt / wrap-to-fit
+
+
 ## 2026-09-17 — Universal measure-first enrichments
 
 Public skill package updates for Cursor / Claude Code:

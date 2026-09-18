@@ -1,3 +1,9 @@
+## 2026-09-17 · delivery · automated text fidelity + ROI compare
+
+- **Saw:** Checklists alone did not stop title↔sub gap collapse, wrap=True one-liners, or wrong bold.
+- **Rule:** Fail-closed scripts: `check_text_fidelity.py` (gaps / lines / weight) + `compare_rois.py` (regional MAE). Cap-height → `font_pt_from_cap_height` / `one_line_box_width`. Progress: `detect_progress_bar.py` → track+fill.
+- **promoted:** yes → scripts + pre-delivery checklist B
+
 ## 2026-09-17 · text · measure bold vs regular; progress = track under fill
 
 - **Deck:** Airbnb Add discounts  

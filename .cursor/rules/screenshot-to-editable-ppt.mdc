@@ -39,3 +39,4 @@ When the user gives a screenshot (or Fit-to-Window capture) and wants a PowerPoi
 - **Corridor text:** equal gaps between parallel lines → `text_in_corridor(..., equal_gaps=True)`.
 - **Nest labels:** ink-sized + `label_gap`; never `h=pad_B`.
 - **Color eyedropper:** exact 1×1 px via `scripts/eyedropper.py` (or user Colors panel Hex). Probe fill+stroke; never AA fringe / guess.
+- **Accuracy gates:** after export, run `check_text_fidelity.py` + `compare_rois.py` (fail-closed). Progress bars via `detect_progress_bar.py` (track+fill).

@@ -61,11 +61,50 @@ def pct_to_px(x_pct, y_pct, w_pct, h_pct, img_w, img_h, slide_w=13.33, slide_h=7
 
 
 def font_pt_from_glyph(glyph_h_px, img_h, slide_h_in=7.5, script="latin"):
-    """pt from measured ink height. Latin uses cap-height ≈ 0.72em; CJK ≈ 0.88em."""
+    """pt from measured **cap-height** (not full-string bbox with descenders).
+
+    Latin uses cap-height ≈ 0.72em; CJK ≈ 0.88em.
+    Pass height of a capital / first-line caps only — including `g`/`y` descenders
+    inflates pt and collapses neighboring text gaps in PPT.
+    """
     ratio = 0.72 if script == "latin" else 0.88
     if glyph_h_px <= 0 or img_h <= 0:
         return 0.0
     return round(float(glyph_h_px) / float(img_h) * float(slide_h_in) * 72.0 / ratio, 1)
+
+
+def font_pt_from_cap_height(cap_h_px, img_h, slide_h_in=7.5, script="latin"):
+    """Alias — prefer this name at call sites so agents do not pass descender bboxes."""
+    return font_pt_from_glyph(cap_h_px, img_h, slide_h_in, script)
+
+
+def one_line_box_width(
+    text: str,
+    size_pt: float,
+    ink_w_px: int,
+    *,
+    img_w: int,
+    img_h: int,
+    slide_w: float = 13.33,
+    slide_h: float = 7.5,
+    char_em: float = 0.55,
+    slack_px: int = 12,
+    max_right_px: int | None = None,
+    left_px: int = 0,
+) -> int:
+    """Widen a one-line text box so PPT glyphs (approx) fit without wrap.
+
+    Photo UI fonts are often narrower than Arial. Ink width alone can force
+    wrap=True disasters — keep wrap=False and return a safer pixel width.
+    """
+    scale, _, _ = screenshot_mapping(img_w, img_h, slide_w, slide_h, "height")
+    # approx string width in inches → px
+    approx_in = max(1, len(text or "")) * (float(size_pt) / 72.0) * float(char_em)
+    need_px = int(approx_in / scale) + int(slack_px) if scale else ink_w_px
+    width = max(int(ink_w_px), need_px)
+    if max_right_px is not None:
+        width = min(width, int(max_right_px) - int(left_px))
+    return max(1, width)
 
 
 def font_pt_fit_shape(

@@ -21,6 +21,8 @@ Do **not** give the user a `.pptx` path, open the file, or say the work is done 
 1. `source_audit.py` exits 0 — spec text boxes contain ink on the **original screenshot**, glyph height matches declared pt, boxes overlap measured lines
 2. `verify_pptx.py` exits 0 with `gates.shape`, `gates.font`, `gates.color` all true
 3. `compare_render.py` exits 0 — a **real PowerPoint slideshow raster** vs the original screenshot (card IoU, no origin-stacked groups, highlight not covering extra glyphs)
+4. `check_text_fidelity.py` exits 0 — text↔text gaps, one-liner line-count, bold/regular vs `text_fidelity.json`
+5. `compare_rois.py` exits 0 — regional MAE vs `rois.json` (local drift global MAE can hide)
 
 **Order:** finish the rebuild → run checklist A → run gates B → only then deliver (statement C). Skipping the checklist is a fail even if gates pass.
 
